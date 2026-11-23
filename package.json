@@ -1,0 +1,24 @@
+{
+  "name": "coder-training-app",
+  "version": "0.1.0",
+  "description": "Open-source web app for training content-analysis coders: blind coding rounds, reliability, and disagreement review.",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.45.0",
+    "papaparse": "^5.4.1"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "^0.2.12",
+    "jsdom": "^29.1.1",
+    "vite": "^5.4.0",
+    "vitest": "^2.1.0"
+  }
+}

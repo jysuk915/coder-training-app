@@ -1,0 +1,110 @@
+{
+  "codebook": {
+    "variables": [
+      {
+        "key": "stance",
+        "name": "Stance",
+        "description": "The position the post takes on the Main Street bike lane proposal.",
+        "categories": [
+          {
+            "key": "support",
+            "name": "Support",
+            "definition": "The post favors the proposal or argues for building the lanes.",
+            "examples": [
+              "Please pass this.",
+              "Build the lanes."
+            ]
+          },
+          {
+            "key": "oppose",
+            "name": "Oppose",
+            "definition": "The post is against the proposal or argues it should not go ahead as planned.",
+            "examples": [
+              "What a waste of $2 million.",
+              "This will kill my restaurant."
+            ]
+          },
+          {
+            "key": "neutral_or_unclear",
+            "name": "Neutral or unclear",
+            "definition": "The post takes no position, only shares information or asks a question, or its position cannot be determined.",
+            "examples": [
+              "The council votes Thursday at 6pm.",
+              "Not sure how I feel about this one yet."
+            ]
+          }
+        ]
+      },
+      {
+        "key": "primary_frame",
+        "name": "Primary frame",
+        "description": "The main consideration the post uses to talk about the proposal. Choose the one that gets the most emphasis.",
+        "categories": [
+          {
+            "key": "safety",
+            "name": "Safety",
+            "definition": "Injuries, deaths, crashes, speeding, emergency access, or feeling safe on the street.",
+            "examples": [
+              "Two cyclists were killed on Main Street in five years."
+            ]
+          },
+          {
+            "key": "economy",
+            "name": "Economy",
+            "definition": "Business revenue, parking for customers, costs, taxes, property values, or household budgets.",
+            "examples": [
+              "Shops on streets with bike lanes see more foot traffic."
+            ]
+          },
+          {
+            "key": "environment_and_health",
+            "name": "Environment and health",
+            "definition": "Climate, emissions, air quality, noise, or public health effects of traffic.",
+            "examples": [
+              "Fewer cars downtown means cleaner air."
+            ]
+          },
+          {
+            "key": "fairness_and_process",
+            "name": "Fairness and process",
+            "definition": "Who was consulted, who benefits or is left out, accessibility, or how the decision was made.",
+            "examples": [
+              "They held ONE public meeting, at 2pm on a weekday."
+            ]
+          },
+          {
+            "key": "other_or_none",
+            "name": "Other or none",
+            "definition": "None of the frames above is emphasized, including purely informational posts and general praise or dislike.",
+            "examples": [
+              "Does anyone know if the lanes will connect to the river trail?"
+            ]
+          }
+        ]
+      },
+      {
+        "key": "incivility",
+        "name": "Incivility",
+        "description": "Whether the post attacks or demeans people. Strong disagreement with an idea is not incivility.",
+        "categories": [
+          {
+            "key": "present",
+            "name": "Present",
+            "definition": "Name-calling, insults, or demeaning language aimed at a person or group.",
+            "examples": [
+              "Anyone who thinks this is a good idea is a complete idiot."
+            ]
+          },
+          {
+            "key": "absent",
+            "name": "Absent",
+            "definition": "No insults or demeaning language aimed at people, even if the tone is angry or sarcastic.",
+            "examples": [
+              "Hard no. Main Street is for cars."
+            ]
+          }
+        ]
+      }
+    ]
+  }
+}
