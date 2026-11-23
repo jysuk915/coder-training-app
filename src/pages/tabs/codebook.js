@@ -2,7 +2,7 @@ import Papa from 'papaparse';
 import { supabase, unwrap } from '../../supabase.js';
 import { h, mount, toast, withBusy, downloadFile } from '../../ui.js';
 import {
-  normalizeCodebook, validateCodebook, codebookFromCsvRows, codebookToCsvRows, codebookFromJson, CODEBOOK_CSV_COLUMNS,
+  assignKeys, normalizeCodebook, validateCodebook, codebookFromCsvRows, codebookToCsvRows, codebookFromJson, CODEBOOK_CSV_COLUMNS,
 } from '../../lib/codebook.js';
 
 const clone = (x) => JSON.parse(JSON.stringify(x));
@@ -40,6 +40,7 @@ export async function codebookTab({ el, session }) {
   // Write the draft to the database without redrawing the page.
   async function writeDraft() {
     clearTimeout(autosaveTimer);
+    assignKeys(draft);
     const snapshot = JSON.stringify(draft);
     const content = normalizeCodebook(draft);
     if (current) {
@@ -125,7 +126,7 @@ export async function codebookTab({ el, session }) {
         h('div', { class: 'row spread' },
           h('h2', {}, 'Codebook'),
           h('div', { class: 'row' }, versionPicker)),
-        !current && h('p', { class: 'muted' }, 'Build the codebook here, or import one from a CSV or JSON file. Try sample/sample_codebook.csv from the project folder.'),
+        !current && h('p', { class: 'muted' }, 'Build the codebook here, or import one from a CSV or JSON file. Try sample/sample_codebook.json from the project folder.'),
         current && current.locked && h('p', { class: 'note' },
           'This version was used in a round, so it can no longer change. ',
           hasDraft ? 'Switch to the draft version to keep editing.' : 'To revise the codebook, create the next version.'),
@@ -146,7 +147,7 @@ export async function codebookTab({ el, session }) {
       canEdit && h('button', {
         class: 'secondary',
         onclick: () => {
-          draft.variables.push({ name: '', description: '', categories: [blankCat(), blankCat()] });
+          draft.variables.push({ name: '', instructions: '', categories: [blankCat(), blankCat()], worked_examples: [] });
           markDirty();
           render();
         },
@@ -174,14 +175,24 @@ export async function codebookTab({ el, session }) {
           },
         }, 'Remove variable')),
       bind(v, 'name', h('input', { type: 'text', class: 'var-name', placeholder: 'Variable name, e.g., Stance', value: v.name || '', 'aria-label': 'Variable name' })),
-      bind(v, 'description', h('textarea', { rows: 2, placeholder: 'What this variable captures, and any general coding rule', 'aria-label': 'Variable description' }, v.description || '')),
+      h('div', { class: 'part-label' }, 'Instructions (optional)'),
+      bind(v, 'instructions', h('textarea', {
+        rows: 4, 'aria-label': 'Instructions',
+        placeholder: 'Anything that applies to the whole variable: what to look at, decision rules, tie-breakers.\nStart a line with "- " to make a bullet.',
+      }, v.instructions ?? v.description ?? '')),
+      h('div', { class: 'part-label' }, 'Categories'),
       h('div', { class: 'cats' }, (v.categories || []).map((c, ci) =>
         h('div', { class: 'cat' },
           h('div', { class: 'row spread' },
             bind(c, 'name', h('input', { type: 'text', placeholder: `Category ${ci + 1} name`, value: c.name || '', 'aria-label': 'Category name' })),
             canEdit && h('button', {
               class: 'link danger-text',
-              onclick: () => { v.categories.splice(ci, 1); markDirty(); render(); },
+              onclick: () => {
+                const [removed] = v.categories.splice(ci, 1);
+                for (const w of v.worked_examples || []) if (removed.key && w.code === removed.key) w.code = '';
+                markDirty();
+                render();
+              },
             }, 'Remove')),
           bind(c, 'definition', h('textarea', { rows: 2, placeholder: 'Definition: when to choose this category', 'aria-label': 'Definition' }, c.definition || '')),
           bind(c, 'examples', h('textarea', { rows: 2, placeholder: 'Examples, one per line', 'aria-label': 'Examples' }, (c.examples || []).join('\n')),
@@ -189,7 +200,40 @@ export async function codebookTab({ el, session }) {
       canEdit && h('button', {
         class: 'secondary small',
         onclick: () => { v.categories.push(blankCat()); markDirty(); render(); },
-      }, '+ Add category'));
+      }, '+ Add category'),
+      h('div', { class: 'part-label' }, 'Worked examples (optional)'),
+      (v.worked_examples || []).length === 0 && !canEdit && h('p', { class: 'muted' }, 'None.'),
+      h('div', { class: 'cats' }, (v.worked_examples || []).map((w, wi) => {
+        const named = v.categories.filter((c) => (c.name || '').trim());
+        const codeSel = h('select', {
+          'aria-label': 'Correct code',
+          onchange: () => {
+            assignKeys(draft);
+            w.code = named[Number(codeSel.value)]?.key || '';
+            markDirty();
+          },
+        },
+          h('option', { value: '' }, 'Correct code…'),
+          named.map((c, i) => h('option', { value: i, selected: !!c.key && c.key === w.code }, c.name)));
+        if (!canEdit) codeSel.disabled = true;
+        return h('div', { class: 'cat' },
+          bind(w, 'text', h('textarea', { rows: 2, placeholder: 'Example item text', 'aria-label': 'Example text' }, w.text || '')),
+          h('div', { class: 'row spread' },
+            codeSel,
+            canEdit && h('button', {
+              class: 'link danger-text',
+              onclick: () => { v.worked_examples.splice(wi, 1); markDirty(); render(); },
+            }, 'Remove')),
+          bind(w, 'reason', h('textarea', { rows: 2, placeholder: 'Reason: why this code is correct', 'aria-label': 'Reason' }, w.reason || '')));
+      })),
+      canEdit && h('button', {
+        class: 'secondary small',
+        onclick: () => {
+          (v.worked_examples ||= []).push({ text: '', code: '', reason: '' });
+          markDirty();
+          render();
+        },
+      }, '+ Add worked example'));
   }
 
   await load();

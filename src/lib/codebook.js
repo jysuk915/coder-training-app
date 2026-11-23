@@ -1,6 +1,13 @@
-// Codebook shape (stored as JSON, one snapshot per version):
-// { variables: [ { key, name, description,
-//                  categories: [ { key, name, definition, examples: [..] } ] } ] }
+// Codebook shape (stored as JSON, one snapshot per version). Every variable
+// uses the same layout:
+//
+// { variables: [ {
+//     key, name,
+//     instructions,                      // optional: rules for the whole variable
+//     categories: [ { key, name, definition, examples: [..] } ],   // at least two
+//     worked_examples: [ { text, code, reason } ]                   // optional; code = a category key
+// } ] }
+//
 // Keys are stable ids. They are created once from the name and never change
 // when a name is edited, so codes from different rounds stay comparable.
 
@@ -22,24 +29,44 @@ function uniqueKey(base, taken) {
   return key;
 }
 
-// Trim text, drop empty examples, and give a key to anything that lacks one.
+// Give a key to every named variable and category that lacks one.
+// Changes the codebook in place (the editor relies on this) and returns it.
+export function assignKeys(codebook) {
+  const vars = codebook.variables || [];
+  const varKeys = new Set(vars.map((v) => v.key).filter(Boolean));
+  for (const v of vars) {
+    if (!v.key && String(v.name || '').trim()) v.key = uniqueKey(slugify(v.name), varKeys);
+    const cats = v.categories || [];
+    const catKeys = new Set(cats.map((c) => c.key).filter(Boolean));
+    for (const c of cats) {
+      if (!c.key && String(c.name || '').trim()) c.key = uniqueKey(slugify(c.name), catKeys);
+    }
+  }
+  return codebook;
+}
+
+// Returns a clean copy: trimmed text, keys assigned, empty examples dropped.
 export function normalizeCodebook(codebook) {
-  const varKeys = new Set((codebook.variables || []).map((v) => v.key).filter(Boolean));
+  const copy = assignKeys(JSON.parse(JSON.stringify({ variables: codebook.variables || [] })));
   return {
-    variables: (codebook.variables || []).map((v) => {
-      const catKeys = new Set((v.categories || []).map((c) => c.key).filter(Boolean));
-      return {
-        key: v.key || uniqueKey(slugify(v.name), varKeys),
-        name: String(v.name || '').trim(),
-        description: String(v.description || '').trim(),
-        categories: (v.categories || []).map((c) => ({
-          key: c.key || uniqueKey(slugify(c.name), catKeys),
-          name: String(c.name || '').trim(),
-          definition: String(c.definition || '').trim(),
-          examples: (c.examples || []).map((e) => String(e).trim()).filter(Boolean),
-        })),
-      };
-    }),
+    variables: copy.variables.map((v) => ({
+      key: v.key || '',
+      name: String(v.name || '').trim(),
+      instructions: String(v.instructions ?? v.description ?? '').trim(),
+      categories: (v.categories || []).map((c) => ({
+        key: c.key || '',
+        name: String(c.name || '').trim(),
+        definition: String(c.definition || '').trim(),
+        examples: (c.examples || []).map((e) => String(e).trim()).filter(Boolean),
+      })),
+      worked_examples: (v.worked_examples || [])
+        .map((w) => ({
+          text: String(w.text || '').trim(),
+          code: String(w.code || ''),
+          reason: String(w.reason || '').trim(),
+        }))
+        .filter((w) => w.text),
+    })),
   };
 }
 
@@ -68,15 +95,19 @@ export function validateCodebook(codebook) {
       if (cl && seenCats.has(cl)) problems.push(`"${label}" has two categories named "${c.name}".`);
       seenCats.add(cl);
       if (c.key && seenCatKeys.has(c.key)) problems.push(`"${label}" has two categories with the key "${c.key}".`);
-      seenCatKeys.add(c.key);
+      if (c.key) seenCatKeys.add(c.key);
+    });
+    (v.worked_examples || []).forEach((w, j) => {
+      if (w.text && !seenCatKeys.has(w.code)) problems.push(`"${label}": worked example ${j + 1} needs a code.`);
     });
   });
   return problems;
 }
 
-export const CODEBOOK_CSV_COLUMNS = ['variable', 'variable_description', 'category', 'definition', 'examples'];
+export const CODEBOOK_CSV_COLUMNS = ['variable', 'instructions', 'category', 'definition', 'examples'];
 
 // CSV format: one row per category. Examples are separated by " | ".
+// Worked examples do not fit this table; use the JSON format to move them.
 export function codebookFromCsvRows(rows) {
   const lower = (row) =>
     Object.fromEntries(Object.entries(row).map(([k, v]) => [k.trim().toLowerCase(), v]));
@@ -89,9 +120,10 @@ export function codebookFromCsvRows(rows) {
     if (!vname || !cname) {
       throw new Error('Every row of a codebook CSV needs both a "variable" and a "category".');
     }
-    if (!byName.has(vname)) byName.set(vname, { name: vname, description: '', categories: [] });
+    if (!byName.has(vname)) byName.set(vname, { name: vname, instructions: '', categories: [] });
     const v = byName.get(vname);
-    if (!v.description && row.variable_description) v.description = String(row.variable_description).trim();
+    const instructions = row.instructions ?? row.variable_description;
+    if (!v.instructions && instructions) v.instructions = String(instructions).trim();
     v.categories.push({
       name: cname,
       definition: String(row.definition || '').trim(),
@@ -107,15 +139,15 @@ export function codebookFromCsvRows(rows) {
 export function codebookToCsvRows(codebook) {
   const rows = [];
   for (const v of codebook.variables || []) {
-    for (const c of v.categories || []) {
+    (v.categories || []).forEach((c, i) => {
       rows.push({
         variable: v.name,
-        variable_description: v.description || '',
+        instructions: i === 0 ? v.instructions || '' : '',
         category: c.name,
         definition: c.definition || '',
         examples: (c.examples || []).join(' | '),
       });
-    }
+    });
   }
   return rows;
 }

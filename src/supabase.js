@@ -32,3 +32,23 @@ export function unwrap({ data, error }) {
   if (error) throw new Error(error.message);
   return data;
 }
+
+// Coders have no accounts: sign this browser in anonymously if nobody is signed in.
+export async function ensureSignedIn() {
+  const user = await currentUser();
+  if (user) return user;
+  const { data, error } = await supabase.auth.signInAnonymously();
+  if (error) throw new Error(error.message);
+  return data.user;
+}
+
+// Supabase returns at most 1,000 rows per request. This fetches every page.
+// `build` must return a fresh query each time, e.g. () => supabase.from('codes').select('*').eq(...)
+export async function fetchAll(build, pageSize = 1000) {
+  const rows = [];
+  for (let from = 0; ; from += pageSize) {
+    const page = unwrap(await build().range(from, from + pageSize - 1));
+    rows.push(...page);
+    if (page.length < pageSize) return rows;
+  }
+}

@@ -4,7 +4,7 @@
       {
         "key": "stance",
         "name": "Stance",
-        "description": "The position the post takes on the Main Street bike lane proposal.",
+        "instructions": "Code the position of the person writing the post, not of people the post quotes or describes.\n- Sarcasm counts as the position it implies. \"Brilliant plan.\" after a complaint is Oppose.\n- Supporting bikes in general while rejecting this plan is Oppose.\n- A question or a news update with no position is Neutral or unclear.",
         "categories": [
           {
             "key": "support",
@@ -33,12 +33,29 @@
               "Not sure how I feel about this one yet."
             ]
           }
+        ],
+        "worked_examples": [
+          {
+            "text": "Oh sure, let's spend millions so twelve people can bike to brunch.",
+            "code": "oppose",
+            "reason": "Sarcasm. The implied position is against the proposal."
+          },
+          {
+            "text": "I love cycling, but this design puts the lane on the wrong side of the street. Send it back.",
+            "code": "oppose",
+            "reason": "Supports biking in general but rejects this plan."
+          },
+          {
+            "text": "Does the proposal include the bridge section?",
+            "code": "neutral_or_unclear",
+            "reason": "A question with no position."
+          }
         ]
       },
       {
         "key": "primary_frame",
         "name": "Primary frame",
-        "description": "The main consideration the post uses to talk about the proposal. Choose the one that gets the most emphasis.",
+        "instructions": "Choose the one consideration the post spends the most words on.\n- If two frames get equal weight, choose the one mentioned first.\n- A post that only cheers or boos, with no reason given, is Other or none.",
         "categories": [
           {
             "key": "safety",
@@ -80,12 +97,24 @@
               "Does anyone know if the lanes will connect to the river trail?"
             ]
           }
+        ],
+        "worked_examples": [
+          {
+            "text": "It would make the street safer, and honestly it would also help the shops.",
+            "code": "safety",
+            "reason": "Two frames with equal weight. Safety is mentioned first."
+          },
+          {
+            "text": "Yes!! Do it!!",
+            "code": "other_or_none",
+            "reason": "Cheering with no reason given."
+          }
         ]
       },
       {
         "key": "incivility",
         "name": "Incivility",
-        "description": "Whether the post attacks or demeans people. Strong disagreement with an idea is not incivility.",
+        "instructions": "Look for attacks on people, not on ideas.\n- Calling a plan stupid is Absent. Calling the people behind it stupid is Present.\n- Sarcasm and anger alone are Absent.",
         "categories": [
           {
             "key": "present",
@@ -102,6 +131,18 @@
             "examples": [
               "Hard no. Main Street is for cars."
             ]
+          }
+        ],
+        "worked_examples": [
+          {
+            "text": "This is the dumbest plan the city has ever produced.",
+            "code": "absent",
+            "reason": "The insult is aimed at the plan, not at people."
+          },
+          {
+            "text": "The planners who drew this up are clueless fools.",
+            "code": "present",
+            "reason": "Name-calling aimed at people."
           }
         ]
       }

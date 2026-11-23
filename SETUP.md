@@ -82,9 +82,17 @@ Sign-in links are only sent back to addresses you approve.
 3. On the **Dataset** tab upload `sample/sample_dataset.csv` (download it from
    your GitHub copy first). Confirm the ID and text columns, then upload.
 4. On the **Codebook** tab click **Import CSV or JSON** and choose
-   `sample/sample_codebook.csv`, then **Save**.
+   `sample/sample_codebook.json`, then **Save**.
 5. On the **Settings** tab set the batch size (20 gives three rounds with the
    sample data) and the reliability target.
+6. On the **Rounds and coders** tab click **Start round 1**.
+7. Try being a coder. Copy the join link from the same tab and open it in a
+   different browser, or in a private/incognito window, so it does not share
+   your trainer sign-in. Enter a name, save the rejoin code you are shown,
+   and code a few items.
+8. Back in your trainer window, the **Rounds and coders** tab shows that
+   coder's progress. You can also click **Join as a coder myself** to code in
+   your own session.
 
 ## Good to know
 

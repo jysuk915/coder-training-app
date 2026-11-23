@@ -1,17 +1,19 @@
 import { supabase, isTrainerUser, unwrap } from '../supabase.js';
 import { h, mount, toast } from '../ui.js';
+import { roundsTab } from './tabs/rounds.js';
 import { datasetTab } from './tabs/dataset.js';
 import { codebookTab } from './tabs/codebook.js';
 import { settingsTab } from './tabs/settings.js';
 
 const TABS = [
+  ['rounds', 'Rounds and coders', roundsTab],
   ['dataset', 'Dataset', datasetTab],
   ['codebook', 'Codebook', codebookTab],
   ['settings', 'Settings', settingsTab],
 ];
 
 export async function sessionPage({ app, user, params, rerender }) {
-  const [sessionId, tabName = 'dataset'] = params;
+  const [sessionId, tabName = 'rounds'] = params;
   if (!isTrainerUser(user)) {
     window.location.hash = '#/trainer';
     return;

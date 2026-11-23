@@ -2,7 +2,7 @@ import { supabase, isTrainerUser, unwrap } from '../supabase.js';
 import { h, mount, toast, withBusy, field } from '../ui.js';
 
 export async function trainerPage({ app, user, rerender }) {
-  if (!isTrainerUser(user)) return signInView(app);
+  if (!isTrainerUser(user)) return signInView(app, user);
 
   const sessions = unwrap(
     await supabase.from('sessions').select('*').eq('trainer_id', user.id).order('created_at', { ascending: false })
@@ -34,7 +34,7 @@ export async function trainerPage({ app, user, rerender }) {
   );
 }
 
-function signInView(app) {
+function signInView(app, user) {
   const email = h('input', { type: 'email', placeholder: 'you@university.edu', required: true, autocomplete: 'email' });
   const btn = h('button', { type: 'submit' }, 'Email me a sign-in link');
   const note = h('p', { class: 'muted' });
@@ -58,6 +58,7 @@ function signInView(app) {
     h('div', { class: 'card narrow' },
       h('h1', {}, 'Trainer sign-in'),
       h('p', {}, 'No password. We email you a link, and the same email always brings you back to your sessions.'),
+      user && h('p', { class: 'warn' }, 'This browser is currently connected as a coder. Signing in as a trainer here disconnects it from that coder slot, so save your rejoin code first.'),
       form, note)
   );
 }

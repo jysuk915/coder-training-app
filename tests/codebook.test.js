@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import Papa from 'papaparse';
 import {
-  slugify, normalizeCodebook, validateCodebook, codebookFromCsvRows, codebookToCsvRows, codebookFromJson,
+  slugify, assignKeys, normalizeCodebook, validateCodebook, codebookFromCsvRows, codebookToCsvRows, codebookFromJson,
 } from '../src/lib/codebook.js';
 import { guessColumns, prepareItems } from '../src/lib/dataset.js';
 
@@ -15,15 +15,28 @@ describe('codebook', () => {
     expect(slugify('***')).toBe('item');
   });
 
-  it('keeps existing keys and gives unique keys to new entries', () => {
+  it('keeps existing keys and gives unique keys to new named entries', () => {
     const cb = normalizeCodebook({
       variables: [
-        { key: 'tone', name: 'Renamed tone', categories: [{ key: 'pos', name: 'Positive!' }, { name: 'Pos' }, { name: 'Pos' }] },
+        { key: 'tone', name: 'Renamed tone', categories: [{ key: 'pos', name: 'Positive!' }, { name: 'Pos' }, { name: 'Pos' }, { name: '' }] },
         { name: 'Tone', categories: [] },
       ],
     });
     expect(cb.variables.map((v) => v.key)).toEqual(['tone', 'tone_2']);
-    expect(cb.variables[0].categories.map((c) => c.key)).toEqual(['pos', 'pos_2', 'pos_3']);
+    expect(cb.variables[0].categories.map((c) => c.key)).toEqual(['pos', 'pos_2', 'pos_3', '']);
+  });
+
+  it('assignKeys fills in keys in place without touching existing ones', () => {
+    const draft = { variables: [{ name: 'Stance', categories: [{ key: 'x', name: 'Support' }, { name: 'Oppose' }, { name: ' ' }] }] };
+    assignKeys(draft);
+    expect(draft.variables[0].key).toBe('stance');
+    expect(draft.variables[0].categories.map((c) => c.key)).toEqual(['x', 'oppose', undefined]);
+  });
+
+  it('reads the older "description" field as instructions', () => {
+    const cb = normalizeCodebook({ variables: [{ name: 'A', description: 'Old text', categories: [] }] });
+    expect(cb.variables[0].instructions).toBe('Old text');
+    expect(cb.variables[0].worked_examples).toEqual([]);
   });
 
   it('explains what is missing', () => {
@@ -32,19 +45,35 @@ describe('codebook', () => {
     expect(problems).toEqual(['"Tone" needs at least two categories.']);
   });
 
+  it('flags worked examples without a valid code and drops empty ones', () => {
+    const cb = normalizeCodebook({ variables: [{ name: 'Tone', categories: [{ name: 'Pos' }, { name: 'Neg' }],
+      worked_examples: [{ text: 'Great!', code: 'pos', reason: 'Praise' }, { text: 'Hmm', code: 'gone' }, { text: '  ', code: 'pos' }] }] });
+    expect(cb.variables[0].worked_examples).toHaveLength(2);
+    expect(validateCodebook(cb)).toEqual(['"Tone": worked example 2 needs a code.']);
+  });
+
   it('round-trips through CSV and JSON', () => {
     const cb = codebookFromCsvRows(parse(read('../sample/sample_codebook.csv')).data);
     expect(validateCodebook(cb)).toEqual([]);
+    expect(cb.variables[0].instructions).toContain('\n- Sarcasm counts');
     const again = codebookFromCsvRows(codebookToCsvRows(cb));
     expect(again).toEqual(cb);
     expect(codebookFromJson(JSON.stringify({ codebook: cb }))).toEqual(cb);
   });
 
-  it('the sample JSON and CSV codebooks match', () => {
+  it('the sample JSON matches the sample CSV and adds worked examples', () => {
     const fromCsv = codebookFromCsvRows(parse(read('../sample/sample_codebook.csv')).data);
     const fromJson = codebookFromJson(read('../sample/sample_codebook.json'));
-    expect(fromJson).toEqual(fromCsv);
-    expect(fromCsv.variables.length).toBe(3);
+    expect(validateCodebook(fromJson)).toEqual([]);
+    expect(fromJson.variables.map((v) => v.worked_examples.length)).toEqual([3, 2, 2]);
+    const strip = (cb) => ({ variables: cb.variables.map((v) => ({ ...v, worked_examples: [] })) });
+    expect(strip(fromJson)).toEqual(fromCsv);
+  });
+
+  it('worked examples in the sample are not items from the sample dataset', () => {
+    const fromJson = codebookFromJson(read('../sample/sample_codebook.json'));
+    const texts = new Set(parse(read('../sample/sample_dataset.csv')).data.map((r) => r.text));
+    for (const v of fromJson.variables) for (const w of v.worked_examples) expect(texts.has(w.text)).toBe(false);
   });
 });
 

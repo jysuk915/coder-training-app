@@ -3,6 +3,9 @@ import { h, mount, toast } from './ui.js';
 import { homePage } from './pages/home.js';
 import { trainerPage } from './pages/trainer.js';
 import { sessionPage } from './pages/session.js';
+import { joinPage } from './pages/join.js';
+import { coderPage } from './pages/coder.js';
+import { codingPage } from './pages/coding.js';
 
 const app = document.getElementById('app');
 const nav = document.getElementById('nav');
@@ -11,6 +14,9 @@ const routes = [
   [/^#?\/?$/, homePage],
   [/^#\/trainer$/, trainerPage],
   [/^#\/s\/([0-9a-f-]{36})(?:\/([a-z]+))?$/, sessionPage],
+  [/^#\/join(?:\/([0-9A-Za-z]+))?$/, joinPage],
+  [/^#\/c\/([0-9a-f-]{36})$/, coderPage],
+  [/^#\/c\/([0-9a-f-]{36})\/code$/, codingPage],
 ];
 
 async function renderNav(user) {

@@ -56,8 +56,9 @@ create table if not exists public.items (
   unique (session_id, ext_id)
 );
 
--- content = {"variables":[{"key","name","description",
---            "categories":[{"key","name","definition","examples":[...]}]}]}
+-- content = {"variables":[{"key","name","instructions",
+--            "categories":[{"key","name","definition","examples":[...]}],
+--            "worked_examples":[{"text","code","reason"}]}]}
 create table if not exists public.codebook_versions (
   id          uuid primary key default gen_random_uuid(),
   session_id  uuid not null references public.sessions (id) on delete cascade,
@@ -283,7 +284,8 @@ begin
   return v_row;
 end $$;
 
--- Coder: join with the session code. Returns the label and personal rejoin code.
+-- Coder: join with the session code and a name (only the trainer sees the name).
+-- Returns the label and personal rejoin code.
 -- Calling it again from the same browser returns the same slot.
 create or replace function public.join_session(p_join_code text, p_name text default null) returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -306,6 +308,9 @@ begin
   if found then
     select rejoin_code into v_rejoin from coder_secrets where coder_id = v_coder.id;
   else
+    if nullif(trim(coalesce(p_name, '')), '') is null then
+      return jsonb_build_object('ok', false, 'error', 'Enter your name. Only the trainer will see it.');
+    end if;
     update sessions set coder_seq = coder_seq + 1 where id = v_session.id
       returning label_for(coder_seq) into v_label;
     insert into coders (session_id, user_id, label) values (v_session.id, v_uid, v_label)
@@ -416,6 +421,13 @@ begin
     where coalesce(jsonb_array_length(v -> 'categories'), 0) < 2
   ) then
     raise exception 'The codebook needs at least one variable, and every variable needs at least two categories.';
+  end if;
+  if exists (
+    select 1 from jsonb_array_elements(v_cb.content -> 'variables') v
+    where coalesce(v ->> 'key', '') = '' or exists (
+      select 1 from jsonb_array_elements(v -> 'categories') c where coalesce(c ->> 'key', '') = '')
+  ) then
+    raise exception 'Every variable and category in the codebook needs a name.';
   end if;
 
   insert into rounds (session_id, round_no, codebook_version_id)

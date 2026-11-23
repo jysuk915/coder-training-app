@@ -17,8 +17,8 @@ together before the next round.
 | Step | What it covers | Status |
 |---|---|---|
 | 1 | Trainer sign-in, sessions, dataset upload, codebook editor, settings | Done |
-| 2 | Coder join and rejoin, blind coding view, progress dashboard | Next |
-| 3 | Close round, agreement and Krippendorff's alpha, disagreement review | Planned |
+| 2 | Coder join and rejoin, blind coding view, progress dashboard | Done |
+| 3 | Close round, agreement and Krippendorff's alpha, disagreement review | Next |
 | 4 | Next round, reliability over rounds, CSV exports | Planned |
 
 The database script (`supabase/setup.sql`) already covers all four steps.
@@ -31,15 +31,29 @@ The database script (`supabase/setup.sql`) already covers all four steps.
 | `supabase/setup.sql` | Tables, security policies, and functions. Paste into Supabase once. |
 | `src/pages/` | One file per screen |
 | `src/lib/` | Codebook and dataset logic, no screen code |
-| `sample/` | A 60-post sample dataset and a 3-variable codebook for trying it out |
+| `sample/` | A 60-post sample dataset and a 3-variable codebook (JSON includes worked examples) |
 | `tests/` | Automated tests, including the security rules run against a real Postgres engine |
+
+## Codebook layout
+
+Every variable uses the same four parts:
+
+| Part | What goes in it | Required |
+|---|---|---|
+| Name | For example "Stance" | Yes |
+| Instructions | Rules for the whole variable: what to look at, decision rules, tie-breakers | No |
+| Categories | Each with a label, a definition, and short example phrases | At least two |
+| Worked examples | Full items with the correct code and the reason | No |
+
+Type the codebook into the editor, or import it. JSON carries everything.
+CSV (one row per category) carries everything except worked examples.
 
 ## Roles
 
 - **Trainers** sign in with an email link and can return to their sessions.
 - **Coders** have no accounts. They enter a session code and get a letter
-  (A, B, C...) plus a personal rejoin code for switching devices. Names are
-  optional and only the trainer can see them.
+  and their name, and get a letter (A, B, C...) plus a personal rejoin code
+  for switching devices. Only the trainer can see names.
 - The trainer cannot see anyone's codes until they close the round, so a
   trainer can also join their own session as a coder.
 

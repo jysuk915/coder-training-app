@@ -131,6 +131,13 @@ describe('joining', () => {
     expect(r.j.rejoin_code).toBe(slots.a.rejoin_code);
   });
 
+  it('a new coder must give a name', async () => {
+    const [r] = await as('outsider', `select join_session($1, '  ') as j`, [session.join_code]);
+    expect(r.j.ok).toBe(false);
+    expect(r.j.error).toMatch(/name/);
+    expect(await admin('select 1 from coders where session_id = $1', [session.id])).toHaveLength(2);
+  });
+
   it('a wrong session code is refused', async () => {
     const [r] = await as('outsider', `select join_session('NOPE22') as j`);
     expect(r.j.ok).toBe(false);
@@ -228,7 +235,7 @@ describe('rejoining on a new device', () => {
 
   it('the right code moves the slot and its saved work', async () => {
     // The new device first joined as a fresh coder by mistake (slot C, no work).
-    const [c] = await as('newdevice', `select join_session($1) as j`, [session.join_code]);
+    const [c] = await as('newdevice', `select join_session($1, 'Oops') as j`, [session.join_code]);
     expect(c.j.label).toBe('C');
     const [r] = await as('newdevice', `select rejoin_session($1, $2) as j`, [session.join_code, slots.b.rejoin_code.toLowerCase()]);
     expect(r.j.ok).toBe(true);
@@ -334,6 +341,38 @@ describe('visitors who are not signed in', () => {
     const gone = await as('trainer', 'delete from items where session_id = $1 returning id', [s2.id]);
     expect(gone).toHaveLength(1);
     await as('trainer', 'delete from sessions where id = $1', [s2.id]);
+  });
+
+  it('a trainer can join their own session as a coder and stays blind', async () => {
+    const [s3] = await as('trainer', `select * from create_session('Third', 2, 0.8)`);
+    await as('trainer', `insert into items (session_id, ext_id, text) values ($1, 't1', 'one'), ($1, 't2', 'two')`, [s3.id]);
+    const [cb] = await as('trainer',
+      `insert into codebook_versions (session_id, version, content) values ($1, 1, $2) returning id`,
+      [s3.id, JSON.stringify(codebook)]);
+    const [t] = await as('trainer', `select join_session($1, 'The PI') as j`, [s3.join_code]);
+    const [o] = await as('other', `select join_session($1, 'Colleague') as j`, [s3.join_code]);
+    expect([t.j.label, o.j.label]).toEqual(['A', 'B']);
+    const [r] = await as('trainer', 'select * from start_round($1, $2)', [s3.id, cb.id]);
+    const batch = await as('trainer', 'select item_id from round_items where round_id = $1', [r.id]);
+    for (const [who, slot] of [['trainer', t.j], ['other', o.j]]) {
+      await as(who,
+        `insert into codes (round_id, item_id, coder_id, variable_key, category_key) values ($1, $2, $3, 'stance', 'support')`,
+        [r.id, batch[0].item_id, slot.coder_id]);
+    }
+    expect(await as('trainer', 'select * from codes where round_id = $1', [r.id])).toHaveLength(1); // own code only
+    await as('trainer', 'select * from close_round($1)', [r.id]);
+    expect(await as('trainer', 'select * from codes where round_id = $1', [r.id])).toHaveLength(2);
+    await as('trainer', 'delete from sessions where id = $1', [s3.id]);
+  });
+
+  it('a codebook with an unnamed category cannot start a round', async () => {
+    const [s4] = await as('trainer', `select * from create_session('Fourth', 2, 0.8)`);
+    await as('trainer', `insert into items (session_id, ext_id, text) values ($1, 'x1', 'one')`, [s4.id]);
+    const [cb] = await as('trainer',
+      `insert into codebook_versions (session_id, version, content) values ($1, 1, $2) returning id`,
+      [s4.id, JSON.stringify({ variables: [{ key: 'v', name: 'V', categories: [{ key: 'a', name: 'A' }, { key: '', name: '' }] }] })]);
+    await expect(as('trainer', 'select * from start_round($1, $2)', [s4.id, cb.id])).rejects.toThrow(/needs a name/);
+    await as('trainer', 'delete from sessions where id = $1', [s4.id]);
   });
 
   it('deleting a session removes everything under it', async () => {

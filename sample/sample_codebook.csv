@@ -1,11 +1,18 @@
-variable,variable_description,category,definition,examples
-Stance,The position the post takes on the Main Street bike lane proposal.,Support,The post favors the proposal or argues for building the lanes.,Please pass this. | Build the lanes.
+variable,instructions,category,definition,examples
+Stance,"Code the position of the person writing the post, not of people the post quotes or describes.
+- Sarcasm counts as the position it implies. ""Brilliant plan."" after a complaint is Oppose.
+- Supporting bikes in general while rejecting this plan is Oppose.
+- A question or a news update with no position is Neutral or unclear.",Support,The post favors the proposal or argues for building the lanes.,Please pass this. | Build the lanes.
 Stance,,Oppose,The post is against the proposal or argues it should not go ahead as planned.,What a waste of $2 million. | This will kill my restaurant.
 Stance,,Neutral or unclear,"The post takes no position, only shares information or asks a question, or its position cannot be determined.",The council votes Thursday at 6pm. | Not sure how I feel about this one yet.
-Primary frame,The main consideration the post uses to talk about the proposal. Choose the one that gets the most emphasis.,Safety,"Injuries, deaths, crashes, speeding, emergency access, or feeling safe on the street.",Two cyclists were killed on Main Street in five years.
+Primary frame,"Choose the one consideration the post spends the most words on.
+- If two frames get equal weight, choose the one mentioned first.
+- A post that only cheers or boos, with no reason given, is Other or none.",Safety,"Injuries, deaths, crashes, speeding, emergency access, or feeling safe on the street.",Two cyclists were killed on Main Street in five years.
 Primary frame,,Economy,"Business revenue, parking for customers, costs, taxes, property values, or household budgets.",Shops on streets with bike lanes see more foot traffic.
 Primary frame,,Environment and health,"Climate, emissions, air quality, noise, or public health effects of traffic.",Fewer cars downtown means cleaner air.
 Primary frame,,Fairness and process,"Who was consulted, who benefits or is left out, accessibility, or how the decision was made.","They held ONE public meeting, at 2pm on a weekday."
 Primary frame,,Other or none,"None of the frames above is emphasized, including purely informational posts and general praise or dislike.",Does anyone know if the lanes will connect to the river trail?
-Incivility,Whether the post attacks or demeans people. Strong disagreement with an idea is not incivility.,Present,"Name-calling, insults, or demeaning language aimed at a person or group.",Anyone who thinks this is a good idea is a complete idiot.
+Incivility,"Look for attacks on people, not on ideas.
+- Calling a plan stupid is Absent. Calling the people behind it stupid is Present.
+- Sarcasm and anger alone are Absent.",Present,"Name-calling, insults, or demeaning language aimed at a person or group.",Anyone who thinks this is a good idea is a complete idiot.
 Incivility,,Absent,"No insults or demeaning language aimed at people, even if the tone is angry or sarcastic.",Hard no. Main Street is for cars.

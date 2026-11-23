@@ -57,3 +57,21 @@ export function downloadFile(filename, text, type = 'text/plain') {
 export function field(label, input, hint) {
   return h('label', { class: 'field' }, h('span', { class: 'field-label' }, label), input, hint && h('span', { class: 'hint' }, hint));
 }
+
+// Show plain text with line breaks; lines starting with "- ", "* " or "•" become bullets.
+export function richText(text) {
+  const out = h('div', { class: 'rich' });
+  let list = null;
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trim();
+    const bullet = line.match(/^(?:[-*•])\s+(.*)$/);
+    if (bullet) {
+      if (!list) out.append((list = h('ul', {})));
+      list.append(h('li', {}, bullet[1]));
+    } else {
+      list = null;
+      if (line) out.append(h('p', {}, line));
+    }
+  }
+  return out;
+}
