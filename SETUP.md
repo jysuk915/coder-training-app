@@ -93,6 +93,9 @@ Sign-in links are only sent back to addresses you approve.
 8. Back in your trainer window, the **Rounds and coders** tab shows that
    coder's progress. You can also click **Join as a coder myself** to code in
    your own session.
+9. With at least two coders done, click **Close round 1**. The review opens:
+   reliability per variable, the disagreement cards, and the codebook issues
+   list. Coders reach the same review from their own page.
 
 ## Good to know
 

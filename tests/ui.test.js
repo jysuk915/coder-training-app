@@ -14,15 +14,18 @@ function query(table) {
   const proxy = new Proxy(function () {}, {
     get(_, prop) {
       if (prop === 'then') {
-        return (resolve) => {
+        return (resolve, reject) => {
           calls.push(q);
+          let result;
           if (failNext && q.ops.some(([name]) => name === 'upsert')) {
-            const message = failNext; failNext = null;
-            return resolve({ data: null, error: { message } });
+            result = { data: null, error: { message: failNext } };
+            failNext = null;
+          } else {
+            const rows = tables[table] || [];
+            const single = q.ops.some(([name]) => name === 'single' || name === 'maybeSingle');
+            result = { data: single ? rows[0] ?? null : rows, error: null, count: rows.length };
           }
-          const rows = tables[table] || [];
-          const single = q.ops.some(([name]) => name === 'single' || name === 'maybeSingle');
-          resolve({ data: single ? rows[0] ?? null : rows, error: null, count: rows.length });
+          return Promise.resolve(result).then(resolve, reject);
         };
       }
       return (...args) => { q.ops.push([prop, ...args]); return proxy; };
@@ -55,6 +58,8 @@ const { sessionPage } = await import('../src/pages/session.js');
 const { joinPage } = await import('../src/pages/join.js');
 const { coderPage } = await import('../src/pages/coder.js');
 const { codingPage } = await import('../src/pages/coding.js');
+const { reviewPage } = await import('../src/pages/review.js');
+const { krippendorffAlphaNominal } = await import('../src/lib/alpha.js');
 
 const session = { id: '11111111-1111-1111-1111-111111111111', trainer_id: 'u1', title: 'Pilot', join_code: 'ABC234', batch_size: 20, alpha_target: 0.8 };
 const sample = JSON.parse(readFileSync('sample/sample_codebook.json', 'utf8')).codebook;
@@ -403,5 +408,167 @@ describe('rounds and coders tab', () => {
     await settle();
     expect(rpcCalls.some(([n, a]) => n === 'reopen_submission' && a.p_coder_id === 'coderA')).toBe(true);
     el.remove();
+  });
+});
+
+describe('closing a round', () => {
+  it('warns about coders who have not submitted, closes, and goes to the review', async () => {
+    tables = {
+      coders: [{ id: 'coderA', label: 'A', joined_at: '2026-11-22T09:00:00Z' }, { id: 'coderB', label: 'B', joined_at: '2026-11-22T09:05:00Z' }],
+      coder_secrets: [{ coder_id: 'coderA', rejoin_code: 'A-2222', name: 'Jiyoun' }, { coder_id: 'coderB', rejoin_code: 'B-7KQ2', name: 'Yini' }],
+      codebook_versions: [{ id: 'cb1', version: 1, locked: true, content: sample }],
+      items: [{}, {}], rounds: [openRound], round_items: [{}, {}],
+    };
+    rpcs.round_progress = [
+      { coder_id: 'coderA', label: 'A', codes_done: 6, codes_total: 6, submitted_at: '2026-11-22T12:00:00Z' },
+      { coder_id: 'coderB', label: 'B', codes_done: 4, codes_total: 6, submitted_at: null },
+    ];
+    const el = newEl();
+    await roundsTab({ el, session, rerender: () => {} });
+    const asked = [];
+    window.confirm = (m) => { asked.push(m); return true; };
+    button(el, 'Close round 1').click();
+    await settle();
+    expect(asked[0]).toContain('Not submitted yet: B (Yini)');
+    expect(rpcCalls.at(-1)).toEqual(['close_round', { p_round_id: 'r1' }]);
+    expect(window.location.hash).toBe('#/r/r1');
+    el.remove();
+  });
+});
+
+describe('review', () => {
+  const relevance = { variables: [{ key: 'relevance', name: 'Relevance', instructions: '', worked_examples: [],
+    categories: [{ key: '0', name: '0 = Not about DEI', definition: 'Not about DEI.' }, { key: '1', name: '1 = About DEI', definition: 'About DEI.' }] }] };
+  const votes = { i1: ['1', '1', '1'], i2: ['1', '1', '0'], i3: ['0', '1?', '1'], i4: ['0', '0', '0'] };
+  const coderIds = ['coderA', 'coderB', 'coderC'];
+  function reviewFixture(extra = {}) {
+    const codes = [];
+    for (const [item, row] of Object.entries(votes)) {
+      row.forEach((cell, i) => codes.push({ item_id: item, coder_id: coderIds[i], variable_key: 'relevance', category_key: cell[0], unsure: cell.endsWith('?') }));
+    }
+    tables = {
+      rounds: [{ ...openRound, status: 'closed', closed_at: '2026-11-23T15:00:00Z' }],
+      sessions: [session],
+      codebook_versions: [{ version: 2, content: relevance }],
+      round_items: Object.keys(votes).map((id, i) => ({ position: i + 1, items: { id, ext_id: `FB ${51 + i}`, text: `Post ${id}` } })),
+      coders: coderIds.map((id, i) => ({ id, label: 'ABC'[i], joined_at: `2026-11-22T09:0${i}:00Z` })),
+      codes, consensus: [], comments: [], codebook_flags: [], reliability: [],
+      ...extra,
+    };
+    rpcs.my_coder_slots = [];
+  }
+  const trainer = { id: 'u1', email: 't@example.edu' };
+  const expectedAlpha = krippendorffAlphaNominal([['1', '1', '1'], ['1', '1', '0'], ['0', '1', '1'], ['0', '0', '0']]).alpha;
+
+  it('trainer: summary, stored reliability, sorted cards, consensus, flag, comment', async () => {
+    reviewFixture();
+    const app = newEl();
+    await reviewPage({ app, user: trainer, params: ['r1'] });
+    expect(app.querySelector('h1').textContent).toBe('Round 1 review');
+    expect(app.textContent).toContain('0 of 1 variable at or above the target');
+    const shown = expectedAlpha.toFixed(2).replace(/^0\./, '.');
+    expect(app.querySelector('table.summary tbody tr').textContent).toContain(shown);
+    expect(app.querySelector('table.summary tbody tr').textContent).toContain('2 of 4'); // items all agreed
+    // reliability stored for the history view
+    const [saved] = opsOf('reliability', 'upsert');
+    expect(saved[1]).toHaveLength(1);
+    expect(saved[1][0]).toMatchObject({ round_id: 'r1', variable_key: 'relevance', n_items: 4, n_coders: 3, passed: false });
+    expect(saved[1][0].alpha).toBeCloseTo(expectedAlpha, 12);
+    expect(saved[1][0].pct_agreement).toBeCloseTo(8 / 12, 12);
+    expect([...app.querySelectorAll('.tabs a')].map((a) => a.textContent)).toEqual(['Summary', 'By variable', 'By item', 'By coder', 'Codebook issues']);
+
+    // variable view: unsure card first, then by odd one out
+    button(app, 'Review').click();
+    const cards = [...app.querySelectorAll('.dcard')];
+    expect(cards.map((c) => c.querySelector('.muted').textContent)).toEqual(['ID FB 53', 'ID FB 52']);
+    expect(cards[0].textContent).toContain('unsure');
+    expect(cards[0].textContent).toContain('Majority split (2 to 1)');
+    expect(cards[0].querySelector('.disputed').textContent).toContain('Not about DEI.');
+    expect(app.querySelector('button.cell').textContent).toBe('2'); // 0 vs 1 mixed up on two items
+    expect([...app.querySelectorAll('td.diag')].map((d) => d.textContent)).toEqual(['1', '1']);
+
+    // set consensus on the first card
+    button(cards[0], '1 = About DEI').click();
+    await settle();
+    const [cons] = opsOf('consensus', 'upsert');
+    expect(cons[1]).toMatchObject({ round_id: 'r1', item_id: 'i3', variable_key: 'relevance', category_key: '1', status: 'resolved' });
+
+    // flag as a codebook issue
+    window.prompt = () => 'Title-only posts';
+    button(app.querySelector('.dcard'), 'Flag as codebook issue').click();
+    await settle();
+    expect(opsOf('codebook_flags', 'insert')[0][1]).toEqual({ round_id: 'r1', item_id: 'i3', variable_key: 'relevance', author_coder_id: null, note: 'Title-only posts' });
+
+    // comment as trainer
+    const box = app.querySelector('.dcard textarea');
+    box.value = 'B was unsure here'; box.dispatchEvent(new Event('input'));
+    button(app.querySelector('.dcard'), 'Post').click();
+    await settle();
+    expect(opsOf('comments', 'insert')[0][1]).toEqual({ round_id: 'r1', item_id: 'i3', variable_key: 'relevance', author_coder_id: null, body: 'B was unsure here' });
+    app.remove();
+  });
+
+  it('shows resolved consensus, flags, and comments; the by-coder tab counts deviation', async () => {
+    reviewFixture({
+      consensus: [{ round_id: 'r1', item_id: 'i3', variable_key: 'relevance', category_key: '1', status: 'resolved' }],
+      comments: [{ id: 'm1', round_id: 'r1', item_id: 'i3', variable_key: 'relevance', author_coder_id: 'coderB', body: 'Read it as a passing mention', created_at: '2026-11-23T16:00:00Z' }],
+      codebook_flags: [{ id: 'f1', round_id: 'r1', item_id: 'i2', variable_key: 'relevance', author_coder_id: null, note: 'Promo posts' }],
+      reliability: [{ variable_key: 'relevance' }],
+    });
+    const app = newEl();
+    await reviewPage({ app, user: trainer, params: ['r1'] });
+    expect(opsOf('reliability', 'upsert')).toHaveLength(0); // already stored
+    const tab = (name) => [...app.querySelectorAll('.tabs a')].find((a) => a.textContent.startsWith(name)).click();
+    expect([...app.querySelectorAll('.tabs a')].at(-1).textContent).toBe('Codebook issues (1)');
+
+    tab('By variable');
+    const first = app.querySelector('.dcard');
+    expect(first.className).toContain('resolved');
+    expect(first.textContent).toContain('Coder B Read it as a passing mention');
+    expect(app.textContent).toContain('Resolved (1)');
+    expect(app.textContent).toContain('Codebook issue (1)');
+
+    tab('By coder');
+    const rows = Object.fromEntries([...app.querySelectorAll('tbody tr')].map((r) => [r.cells[0].textContent, [...r.cells].map((c) => c.textContent)]));
+    // comparable items: i1, i4 (unanimous) and i3 (resolved to 1). A coded 0 on i3.
+    expect(rows.A[2]).toBe('1 of 3 (33%)');
+    expect(rows.B[2]).toBe('0 of 3 (0%)');
+    expect(rows.A[3]).toBe('1'); // odd one out on i3
+    expect(rows.C[3]).toBe('1'); // odd one out on i2
+    expect(rows.B[4]).toBe('1'); // unsure once
+
+    tab('By item');
+    expect(app.querySelectorAll('.card table')).toHaveLength(2); // two items with a disagreement
+    tab('Codebook issues');
+    expect(app.textContent).toContain('Trainer: Promo posts');
+    expect(app.textContent).toContain('ID FB 52');
+    app.remove();
+  });
+
+  it('coder: no by-coder tab, cannot set consensus, comments as their own letter', async () => {
+    reviewFixture({ consensus: [{ round_id: 'r1', item_id: 'i3', variable_key: 'relevance', category_key: '1', status: 'resolved' }] });
+    rpcs.my_coder_slots = [{ session_id: SID, title: 'Pilot', coder_id: 'coderB', label: 'B', rejoin_code: 'B-7KQ2' }];
+    const app = newEl();
+    await reviewPage({ app, user: anon, params: ['r1'] });
+    expect(opsOf('reliability', 'upsert')).toHaveLength(0);
+    expect([...app.querySelectorAll('.tabs a')].map((a) => a.textContent)).toEqual(['Summary', 'By variable', 'By item', 'Codebook issues']);
+    button(app, 'Review').click();
+    const card = app.querySelector('.dcard');
+    expect(card.querySelector('.consensus')).toBeNull();
+    expect(card.textContent).toContain('Consensus: 1 = About DEI');
+    expect(card.querySelector('.votes').textContent).toContain('B (you)');
+    const box = card.querySelector('textarea');
+    box.value = 'I agree'; box.dispatchEvent(new Event('input'));
+    button(card, 'Post').click();
+    await settle();
+    expect(opsOf('comments', 'insert')[0][1]).toMatchObject({ author_coder_id: 'coderB', body: 'I agree' });
+    app.remove();
+  });
+
+  it('an open round has no review yet', async () => {
+    reviewFixture({ rounds: [openRound] });
+    const app = newEl();
+    await reviewPage({ app, user: trainer, params: ['r1'] });
+    expect(app.textContent).toContain('still open');
   });
 });

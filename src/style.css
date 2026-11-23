@@ -127,3 +127,34 @@ progress { width: 110px; vertical-align: middle; accent-color: var(--accent); }
 .tag.ok { background: #e2f3ea; color: var(--ok); }
 .tag.busy { background: #eef4fd; color: var(--accent); }
 td code { white-space: nowrap; }
+
+/* ---- checkpoint 3: review ---- */
+h3 { font-size: 1rem; margin: 14px 0 6px; }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.tag.bad { background: #fde8e6; color: var(--danger); }
+.tag.warn-tag { background: var(--warn-bg); color: #7a5a00; margin-left: 6px; }
+.statrow { display: flex; flex-wrap: wrap; gap: 28px; margin: 8px 0 4px; }
+.stat { display: flex; flex-direction: column; }
+.stat strong { font-size: 1.5rem; font-variant-numeric: tabular-nums; }
+table.summary td, table.summary th { vertical-align: middle; }
+table.confusion { width: auto; }
+table.confusion th { max-width: 9em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.85rem; }
+table.confusion td { text-align: center; min-width: 3em; padding: 4px; }
+table.confusion td.diag { background: #f1f3f6; color: var(--muted); }
+button.cell { background: var(--warn-bg); color: var(--ink); border: 1px solid var(--warn-line); padding: 2px 10px; min-width: 2.6em; }
+button.cell.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.dcard { border-left: 4px solid var(--accent); }
+.dcard.resolved { border-left-color: #9fd0b5; }
+.dcard > * + * { margin-top: 12px; }
+.votes { display: flex; flex-wrap: wrap; gap: 8px; }
+.vote { border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px; background: #fff; }
+.vote.odd { border-color: var(--warn-line); background: var(--warn-bg); }
+.disputed { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; background: #f6f7f9; border-radius: 6px; padding: 10px 12px; font-size: 0.93rem; }
+.consensus .pills { margin-top: 4px; align-items: center; }
+.thread { border-top: 1px solid var(--line); padding-top: 10px; }
+.comment { margin: 4px 0; }
+.comment-form { display: grid; gap: 6px; margin-top: 8px; }
+.flags .warn { margin: 4px 0; }
+tr.split td { background: #fffaf0; }
+.issue { border-top: 1px solid var(--line); padding: 10px 0; }
+.issue .quote { border-left: 3px solid var(--line); padding-left: 10px; margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }

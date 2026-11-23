@@ -6,6 +6,7 @@ import { sessionPage } from './pages/session.js';
 import { joinPage } from './pages/join.js';
 import { coderPage } from './pages/coder.js';
 import { codingPage } from './pages/coding.js';
+import { reviewPage } from './pages/review.js';
 
 const app = document.getElementById('app');
 const nav = document.getElementById('nav');
@@ -17,6 +18,7 @@ const routes = [
   [/^#\/join(?:\/([0-9A-Za-z]+))?$/, joinPage],
   [/^#\/c\/([0-9a-f-]{36})$/, coderPage],
   [/^#\/c\/([0-9a-f-]{36})\/code$/, codingPage],
+  [/^#\/r\/([0-9a-f-]{36})$/, reviewPage],
 ];
 
 async function renderNav(user) {

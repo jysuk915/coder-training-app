@@ -18,8 +18,8 @@ together before the next round.
 |---|---|---|
 | 1 | Trainer sign-in, sessions, dataset upload, codebook editor, settings | Done |
 | 2 | Coder join and rejoin, blind coding view, progress dashboard | Done |
-| 3 | Close round, agreement and Krippendorff's alpha, disagreement review | Next |
-| 4 | Next round, reliability over rounds, CSV exports | Planned |
+| 3 | Close round, agreement and Krippendorff's alpha, disagreement review | Done |
+| 4 | Next round, reliability over rounds, CSV exports | Next |
 
 The database script (`supabase/setup.sql`) already covers all four steps.
 
@@ -47,6 +47,27 @@ Every variable uses the same four parts:
 
 Type the codebook into the editor, or import it. JSON carries everything.
 CSV (one row per category) carries everything except worked examples.
+
+## Reliability statistics
+
+Computed per variable when the trainer closes a round (`src/lib/alpha.js`):
+
+- **Krippendorff's alpha** for nominal data, any number of coders, missing
+  codes allowed. Items coded by fewer than two coders are left out.
+- **Pairwise agreement**: of all pairs of coders who coded the same item, the
+  share that chose the same category.
+- **Items all agreed**: items where every coder who coded it chose the same category.
+
+Alpha is tested against the worked examples in Krippendorff (2011),
+"Computing Krippendorff's Alpha-Reliability" (.095, .692, .743), the
+Wikipedia worked example (.691), and 40 random tables computed with R's
+`irr` package.
+
+One difference from `irr` to be aware of: for tables with no missing codes
+and three or more coders, `irr::kripp.alpha` (version 0.85) returns a
+slightly different value than Krippendorff's formula (for example .697
+instead of .702). This app follows Krippendorff's formula. With two coders,
+or with any missing code, the two agree exactly.
 
 ## Roles
 

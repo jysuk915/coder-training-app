@@ -58,8 +58,10 @@ export async function roundsTab({ el, session, rerender }) {
     const table = h('div', {});
     const stamp = h('span', { class: 'muted' });
 
+    let lastRows = [];
     async function refreshProgress() {
       const rows = unwrap(await supabase.rpc('round_progress', { p_round_id: openRound.id }));
+      lastRows = rows;
       stamp.textContent = `Updated ${new Date().toLocaleTimeString()}`;
       mount(table, rows.length === 0
         ? h('p', { class: 'muted' }, 'No coders have joined yet.')
@@ -96,13 +98,31 @@ export async function roundsTab({ el, session, rerender }) {
     }
 
     const refreshBtn = h('button', { class: 'secondary small', onclick: () => withBusy(refreshBtn, refreshProgress) }, 'Refresh');
+    const closeBtn = h('button', {
+      onclick: () => withBusy(closeBtn, async () => {
+        await refreshProgress();
+        const coded = lastRows.filter((r) => Number(r.codes_done) > 0);
+        const waiting = lastRows.filter((r) => !r.submitted_at);
+        const lines = [`Close round ${openRound.round_no}? This cannot be undone.`];
+        if (coded.length < 2) lines.push(`Only ${coded.length} coder${coded.length === 1 ? ' has' : 's have'} coded anything, so agreement cannot be computed.`);
+        if (waiting.length > 0) {
+          lines.push(`Not submitted yet: ${waiting.map((r) => `${r.label}${secretOf.get(r.coder_id)?.name ? ` (${secretOf.get(r.coder_id).name})` : ''}`).join(', ')}. Their saved answers will count as they are, and anything they have not coded is treated as missing.`);
+        }
+        if (!window.confirm(lines.join('\n\n'))) return;
+        unwrap(await supabase.rpc('close_round', { p_round_id: openRound.id }));
+        toast('Round closed');
+        window.location.hash = `#/r/${openRound.id}`;
+      }),
+    }, `Close round ${openRound.round_no}`);
     mount(roundCard,
       h('div', { class: 'row spread' },
         h('h2', {}, `Round ${openRound.round_no} is open`),
         h('div', { class: 'row' }, stamp, refreshBtn)),
       h('p', { class: 'muted' }, `Codebook version ${cb ? cb.version : '?'}, opened ${new Date(openRound.opened_at).toLocaleDateString()}. You see progress only. Nobody, including you, can see other coders' answers until the round is closed.`),
       table,
-      h('p', { class: 'note' }, 'Closing the round, reliability statistics, and the disagreement review arrive in the next build step.'));
+      h('div', { class: 'row' },
+        closeBtn,
+        h('span', { class: 'muted' }, 'Closing freezes all answers, computes reliability, and opens the review for everyone in the session.')));
     await refreshProgress();
     const timer = setInterval(() => {
       if (!el.isConnected) return clearInterval(timer);
@@ -155,7 +175,8 @@ export async function roundsTab({ el, session, rerender }) {
     roundCard,
     codersCard,
     closed.length > 0 && h('div', { class: 'card' },
-      h('h2', {}, 'Earlier rounds'),
+      h('h2', {}, 'Closed rounds'),
       h('ul', {}, closed.map((r) => h('li', {},
-        `Round ${r.round_no}, codebook version ${versionOf(r.codebook_version_id)?.version ?? '?'}, closed ${new Date(r.closed_at).toLocaleDateString()}`)))));
+        `Round ${r.round_no}, codebook version ${versionOf(r.codebook_version_id)?.version ?? '?'}, closed ${new Date(r.closed_at).toLocaleDateString()}. `,
+        h('a', { href: `#/r/${r.id}` }, 'Open review'))))));
 }

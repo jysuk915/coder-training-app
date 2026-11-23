@@ -41,7 +41,9 @@ export async function coderPage({ app, user, params }) {
       h('div', { class: 'joincode' }, h('span', { class: 'muted' }, 'Your rejoin code'), h('strong', {}, slot.rejoin_code))),
     status,
     closed.length > 0 && h('div', { class: 'card' },
-      h('h2', {}, 'Earlier rounds'),
-      h('ul', {}, closed.map((r) => h('li', {}, `Round ${r.round_no}, closed ${new Date(r.closed_at).toLocaleDateString()}`))),
-      h('p', { class: 'muted' }, 'The disagreement review screens arrive in the next build step.')));
+      h('h2', {}, 'Review'),
+      h('p', { class: 'muted' }, 'Closed rounds. See how the team coded each item, discuss disagreements, and flag codebook issues.'),
+      h('ul', {}, [...closed].reverse().map((r) => h('li', {},
+        `Round ${r.round_no}, closed ${new Date(r.closed_at).toLocaleDateString()}. `,
+        h('a', { href: `#/r/${r.id}` }, 'Open review'))))));
 }
