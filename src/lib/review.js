@@ -119,26 +119,54 @@ export function coderDeviation(cards, coders, consensusOf) {
   return [...rows.values()];
 }
 
-// Reliability for every variable in a round, failing variables first.
-export function roundReliability(items, variables, index, target) {
-  return variables.map((variable) => {
-    const units = unitsFor(items, variable.key, index);
-    const stats = variableReliability(units, target);
-    const coders = new Set();
-    for (const it of items) for (const id of index.get(k(it.id, variable.key))?.keys() || []) coders.add(id);
-    return { variable, ...stats, nCoders: coders.size, nDisagreements: stats.nItems - stats.nUnanimous };
-  }).sort((a, b) => Number(a.passed) - Number(b.passed) || (a.alpha ?? -2) - (b.alpha ?? -2));
+function statsFor(items, variable, index, target) {
+  const units = unitsFor(items, variable.key, index);
+  const stats = variableReliability(units, target);
+  const coders = new Set();
+  for (const it of items) for (const id of index.get(k(it.id, variable.key))?.keys() || []) coders.add(id);
+  return { variable, ...stats, nCoders: coders.size, nDisagreements: stats.nItems - stats.nUnanimous };
 }
 
-// Rows for the reliability table in the database.
-export function reliabilityRows(roundId, stats) {
-  return stats.map((s) => ({
+// Reliability for every variable in a round, failing variables first.
+export function roundReliability(items, variables, index, target) {
+  return variables.map((variable) => statsFor(items, variable, index, target))
+    .sort((a, b) => Number(a.passed) - Number(b.passed) || (a.alpha ?? -2) - (b.alpha ?? -2));
+}
+
+// The group names used by a round's items (empty when the dataset has no groups).
+export function groupsOf(items) {
+  return [...new Set(items.map((it) => it.group_label).filter(Boolean))].sort();
+}
+
+// Reliability per group: Map variable key -> [{ group, alpha, ... }], one entry per group.
+export function groupReliability(items, variables, index, target) {
+  const groups = groupsOf(items);
+  const out = new Map();
+  if (groups.length === 0) return out;
+  for (const variable of variables) {
+    out.set(variable.key, groups.map((group) => ({
+      group,
+      ...statsFor(items.filter((it) => it.group_label === group), variable, index, target),
+    })));
+  }
+  return out;
+}
+
+// Rows for the reliability table in the database: one per variable for all
+// items (group_label ''), plus one per variable and group.
+export function reliabilityRows(roundId, stats, byGroup = new Map()) {
+  const row = (s, group) => ({
     round_id: roundId,
     variable_key: s.variable.key,
+    group_label: group,
     n_items: s.nItems,
     n_coders: s.nCoders,
     pct_agreement: s.pctAgreement,
     alpha: s.alpha,
     passed: s.passed,
-  }));
+  });
+  return [
+    ...stats.map((s) => row(s, '')),
+    ...[...byGroup.values()].flatMap((list) => list.map((s) => row(s, s.group))),
+  ];
 }

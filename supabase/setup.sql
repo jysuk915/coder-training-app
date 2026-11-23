@@ -53,8 +53,12 @@ create table if not exists public.items (
   ext_id      text not null,
   text        text not null,
   position    int  not null default 0,
+  group_label text,
   unique (session_id, ext_id)
 );
+-- Optional grouping (for example platform). When a session's items have
+-- groups, each round draws the batch size from every group.
+alter table public.items add column if not exists group_label text;
 
 -- content = {"variables":[{"key","name","instructions",
 --            "categories":[{"key","name","definition","examples":[...]}],
@@ -119,8 +123,23 @@ create table if not exists public.reliability (
   alpha          numeric,
   passed         boolean not null default false,
   computed_at    timestamptz not null default now(),
-  primary key (round_id, variable_key)
+  group_label    text not null default '',
+  primary key (round_id, variable_key, group_label)
 );
+-- group_label '' is the figure for all items; other values are one group each.
+-- (The next lines upgrade databases created before groups existed.)
+alter table public.reliability add column if not exists group_label text not null default '';
+do $$
+begin
+  if not exists (
+    select 1 from information_schema.key_column_usage
+    where table_schema = 'public' and table_name = 'reliability'
+      and constraint_name = 'reliability_pkey' and column_name = 'group_label'
+  ) then
+    alter table public.reliability drop constraint reliability_pkey;
+    alter table public.reliability add primary key (round_id, variable_key, group_label);
+  end if;
+end $$;
 
 create table if not exists public.consensus (
   round_id      uuid not null references public.rounds (id) on delete cascade,
@@ -395,7 +414,8 @@ language sql stable security definer set search_path = public as $$
   order by c.joined_at desc;
 $$;
 
--- Trainer: start the next round with a fresh random batch of unused items.
+-- Trainer: start the next round with a fresh random batch of unused items
+-- (batch_size items, or batch_size from each group when items have groups).
 create or replace function public.start_round(p_session_id uuid, p_codebook_version_id uuid)
 returns public.rounds
 language plpgsql security definer set search_path = public as $$
@@ -436,14 +456,20 @@ begin
           p_codebook_version_id)
   returning * into v_round;
 
+  -- Draw batch_size unused items at random from every group. A dataset
+  -- without groups is one group, so it simply gets batch_size items.
   insert into round_items (round_id, item_id, position)
-  select v_round.id, picked.id, row_number() over ()
+  select v_round.id, picked.id, row_number() over (order by random())
   from (
-    select i.id from items i
-    where i.session_id = p_session_id
-      and not exists (select 1 from round_items ri where ri.item_id = i.id)
-    order by random()
-    limit v_session.batch_size
+    select ranked.id
+    from (
+      select i.id,
+             row_number() over (partition by coalesce(i.group_label, '') order by random()) as rn
+      from items i
+      where i.session_id = p_session_id
+        and not exists (select 1 from round_items ri where ri.item_id = i.id)
+    ) ranked
+    where ranked.rn <= v_session.batch_size
   ) picked;
   get diagnostics v_n = row_count;
   if v_n = 0 then
@@ -452,6 +478,24 @@ begin
 
   update codebook_versions set locked = true where id = p_codebook_version_id;
   return v_round;
+end $$;
+
+-- Trainer: how many items each group has, and how many are still unused.
+create or replace function public.session_item_counts(p_session_id uuid)
+returns table (group_label text, total bigint, unused bigint)
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not exists (select 1 from sessions where id = p_session_id and trainer_id = auth.uid()) then
+    raise exception 'Only the trainer can see item counts.';
+  end if;
+  return query
+    select coalesce(i.group_label, ''),
+           count(*),
+           count(*) filter (where not exists (select 1 from round_items ri where ri.item_id = i.id))
+    from items i
+    where i.session_id = p_session_id
+    group by 1
+    order by 1;
 end $$;
 
 -- Coder: lock my answers for this round.
@@ -719,7 +763,8 @@ revoke all on function
   public.create_session(text, int, numeric), public.join_session(text, text),
   public.rejoin_session(text, text), public.my_coder_slots(),
   public.start_round(uuid, uuid), public.submit_round(uuid),
-  public.reopen_submission(uuid, uuid), public.close_round(uuid), public.round_progress(uuid)
+  public.reopen_submission(uuid, uuid), public.close_round(uuid), public.round_progress(uuid),
+  public.session_item_counts(uuid)
 from public, anon;
 
 grant execute on function
@@ -728,5 +773,6 @@ grant execute on function
   public.create_session(text, int, numeric), public.join_session(text, text),
   public.rejoin_session(text, text), public.my_coder_slots(),
   public.start_round(uuid, uuid), public.submit_round(uuid),
-  public.reopen_submission(uuid, uuid), public.close_round(uuid), public.round_progress(uuid)
+  public.reopen_submission(uuid, uuid), public.close_round(uuid), public.round_progress(uuid),
+  public.session_item_counts(uuid)
 to authenticated;

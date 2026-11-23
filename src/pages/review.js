@@ -1,7 +1,7 @@
 import { supabase, unwrap, fetchAll, isTrainerUser } from '../supabase.js';
 import { h, mount, toast, withBusy, richText } from '../ui.js';
 import {
-  indexCodes, buildCards, sortDisagreements, confusionGrid, consensusCode, coderDeviation, roundReliability, reliabilityRows,
+  indexCodes, buildCards, sortDisagreements, confusionGrid, consensusCode, coderDeviation, roundReliability, reliabilityRows, groupsOf, groupReliability,
 } from '../lib/review.js';
 
 const POLL_MS = 20000;
@@ -39,7 +39,7 @@ export async function reviewPage({ app, user, params }) {
   // ---- load everything for the round ----
   const [cbRow, batch, coderRows, codes] = await Promise.all([
     supabase.from('codebook_versions').select('version, content').eq('id', round.codebook_version_id).single().then(unwrap),
-    supabase.from('round_items').select('position, items(id, ext_id, text)').eq('round_id', round.id).order('position').then(unwrap),
+    supabase.from('round_items').select('position, items(id, ext_id, text, group_label)').eq('round_id', round.id).order('position').then(unwrap),
     supabase.from('coders').select('id, label, joined_at').eq('session_id', session.id).order('joined_at').then(unwrap),
     fetchAll(() => supabase.from('codes').select('item_id, coder_id, variable_key, category_key, unsure')
       .eq('round_id', round.id).order('item_id').order('coder_id').order('variable_key')),
@@ -53,12 +53,15 @@ export async function reviewPage({ app, user, params }) {
   const target = Number(session.alpha_target);
   const stats = roundReliability(items, variables, index, target);
   const cardsByVar = new Map(variables.map((v) => [v.key, buildCards(items, v, index, coders)]));
+  const groups = groupsOf(items); // empty when the dataset has no groups
+  const statsByGroup = groupReliability(items, variables, index, target);
 
   // The trainer's first visit stores the reliability figures for the history view.
   if (isTrainer) {
     const stored = unwrap(await supabase.from('reliability').select('variable_key').eq('round_id', round.id));
-    if (stored.length !== variables.length) {
-      unwrap(await supabase.from('reliability').upsert(reliabilityRows(round.id, stats), { onConflict: 'round_id,variable_key' }));
+    if (stored.length !== variables.length * (1 + groups.length)) {
+      unwrap(await supabase.from('reliability').upsert(
+        reliabilityRows(round.id, stats, statsByGroup), { onConflict: 'round_id,variable_key,group_label' }));
     }
   }
 
@@ -91,14 +94,14 @@ export async function reviewPage({ app, user, params }) {
   const catName = (variable, key) => variable.categories.find((c) => c.key === key)?.name || key;
 
   // ---- view state ----
-  const state = { view: 'summary', variableKey: stats[0]?.variable.key, pair: null, status: 'all', onlyDisagreements: true };
+  const state = { view: 'summary', variableKey: stats[0]?.variable.key, pair: null, status: 'all', group: null, onlyDisagreements: true };
   const drafts = new Map(); // unsent comment text per card, kept across redraws
   let postAs = isTrainer ? 'trainer' : 'coder';
   const body = h('div', {});
   const tabsEl = h('nav', { class: 'tabs' });
 
   function setView(view, patch = {}) {
-    Object.assign(state, { view, pair: null, status: 'all' }, patch);
+    Object.assign(state, { view, pair: null, status: 'all', group: null }, patch);
     render();
     window.scrollTo({ top: 0 });
   }
@@ -144,6 +147,15 @@ export async function reviewPage({ app, user, params }) {
           }))),
         stats.some((s) => s.alphaReason) && h('p', { class: 'muted' }, stats.filter((s) => s.alphaReason).map((s) => `${s.variable.name}: ${s.alphaReason}`).join(' ')),
         h('p', { class: 'muted' }, 'Pairwise agreement: of all pairs of coders who coded the same item, the share that chose the same category. Items coded by only one coder are left out of every figure.')),
+      groups.length > 0 && h('div', { class: 'card' },
+        h('h2', {}, "Krippendorff's α by group"),
+        h('table', { class: 'summary' },
+          h('thead', {}, h('tr', {}, h('th', {}, 'Variable'), h('th', { class: 'num' }, 'All items'), groups.map((g) => h('th', { class: 'num' }, g)))),
+          h('tbody', {}, stats.map((s) => h('tr', {},
+            h('td', {}, h('strong', {}, s.variable.name)),
+            h('td', { class: 'num' }, h('strong', {}, fmtAlpha(s.alpha))),
+            statsByGroup.get(s.variable.key).map((g) => h('td', { class: g.passed ? 'num' : 'num below', title: g.alphaReason || `${g.nItems} items` }, fmtAlpha(g.alpha))))))),
+        h('p', { class: 'muted' }, 'The "All items" figure is computed on the pooled items, not averaged across groups. Group figures rest on fewer items, so they move around more.')),
     ];
   }
 
@@ -162,6 +174,7 @@ export async function reviewPage({ app, user, params }) {
       resolved: list.filter(isResolved).length,
       flagged: list.filter((c) => flagsOf(c).length > 0).length,
     };
+    if (state.group) list = list.filter((c) => c.item.group_label === state.group);
     if (state.pair) list = list.filter((c) => state.pair.every((p) => c.disputed.includes(p)));
     if (state.status === 'open') list = list.filter((c) => !isResolved(c));
     if (state.status === 'resolved') list = list.filter(isResolved);
@@ -183,6 +196,17 @@ export async function reviewPage({ app, user, params }) {
           stat('Items all agreed', `${s.nUnanimous} of ${s.nItems}`),
           stat('Coders', s.nCoders)),
         s.alphaReason && h('p', { class: 'muted' }, s.alphaReason),
+        groups.length > 0 && h('div', {},
+          h('h3', {}, 'By group'),
+          h('table', {},
+            h('thead', {}, h('tr', {}, ['Group', "Krippendorff's α", 'Result', 'Pairwise agreement', 'Items all agreed', 'Disagreements'].map((t) => h('th', {}, t)))),
+            h('tbody', {}, statsByGroup.get(variable.key).map((g) => h('tr', {},
+              h('td', {}, h('strong', {}, g.group)),
+              h('td', { class: 'num', title: g.alphaReason || '' }, fmtAlpha(g.alpha)),
+              h('td', {}, g.passed ? h('span', { class: 'tag ok' }, 'Passed') : h('span', { class: 'tag bad' }, g.alpha === null ? 'Not computable' : 'Below target')),
+              h('td', { class: 'num' }, fmtPct(g.pctAgreement)),
+              h('td', { class: 'num' }, `${g.nUnanimous} of ${g.nItems}`),
+              h('td', { class: 'num' }, g.nDisagreements)))))),
         h('div', { class: 'grid two' },
           h('div', {},
             h('h3', {}, 'How often each category was used'),
@@ -199,6 +223,9 @@ export async function reviewPage({ app, user, params }) {
         h('div', { class: 'pills' },
           [['all', 'All'], ['open', 'Open'], ['resolved', 'Resolved'], ['flagged', 'Codebook issue']].map(([key, label]) =>
             h('button', { class: state.status === key ? 'pill active' : 'pill', onclick: () => { state.status = key; render(); } }, `${label} (${counts[key]})`))),
+        groups.length > 0 && h('div', { class: 'pills' },
+          h('button', { class: state.group === null ? 'pill active' : 'pill', onclick: () => { state.group = null; render(); } }, 'All groups'),
+          groups.map((g) => h('button', { class: state.group === g ? 'pill active' : 'pill', onclick: () => { state.group = g; render(); } }, g))),
         state.pair && h('span', {},
           `Showing ${catName(variable, state.pair[0])} vs ${catName(variable, state.pair[1])} `,
           h('button', { class: 'link', onclick: () => { state.pair = null; render(); } }, 'Show all'))),
@@ -324,6 +351,7 @@ export async function reviewPage({ app, user, params }) {
       h('div', { class: 'row spread' },
         h('span', { class: 'muted' }, `ID ${card.item.ext_id}`),
         h('div', { class: 'row' },
+          card.item.group_label && h('span', { class: 'tag' }, card.item.group_label),
           h('span', { class: 'tag' }, card.kind === 'full' ? 'Full split' : `Majority split (${[...card.counts.values()].sort((a, b) => b - a).join(' to ')})`),
           cardFlags.length > 0 && h('span', { class: 'tag warn-tag' }, 'Codebook issue'),
           resolved ? h('span', { class: 'tag ok' }, 'Resolved') : h('span', { class: 'tag busy' }, 'Open'))),

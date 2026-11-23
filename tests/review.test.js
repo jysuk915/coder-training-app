@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  indexCodes, unitsFor, buildCards, sortDisagreements, confusionGrid, consensusCode, coderDeviation, roundReliability, reliabilityRows,
+  indexCodes, unitsFor, buildCards, sortDisagreements, confusionGrid, consensusCode, coderDeviation, roundReliability, reliabilityRows, groupsOf, groupReliability,
 } from '../src/lib/review.js';
 
 const coders = [{ id: 'cA', label: 'A' }, { id: 'cB', label: 'B' }, { id: 'cC', label: 'C' }];
@@ -94,6 +94,28 @@ describe('round reliability', () => {
     expect(stats[0]).toMatchObject({ passed: false, nItems: 5, nUnanimous: 1, nCoders: 3, nDisagreements: 4 });
     expect(stats[0].alpha).toBeLessThan(0.3);
     const rows = reliabilityRows('r1', stats);
-    expect(rows[1]).toEqual({ round_id: 'r1', variable_key: 'easy', n_items: 4, n_coders: 3, pct_agreement: 1, alpha: 1, passed: true });
+    expect(rows[1]).toEqual({ round_id: 'r1', variable_key: 'easy', group_label: '', n_items: 4, n_coders: 3, pct_agreement: 1, alpha: 1, passed: true });
+  });
+});
+
+describe('groups', () => {
+  const grouped = items.map((it, i) => ({ ...it, group_label: i < 4 ? 'FB' : 'YT' }));
+
+  it('finds the groups, or none', () => {
+    expect(groupsOf(grouped)).toEqual(['FB', 'YT']);
+    expect(groupsOf(items)).toEqual([]);
+    expect(groupReliability(items, [variable], index, 0.8).size).toBe(0);
+  });
+
+  it('computes reliability within each group', () => {
+    const by = groupReliability(grouped, [variable], index, 0.8).get('frame');
+    expect(by.map((g) => g.group)).toEqual(['FB', 'YT']);
+    // FB = i1..i4 (all three coders); YT = i5 (two coders), i6 (one), i7 (none)
+    expect(by[0]).toMatchObject({ nItems: 4, nUnanimous: 1, nCoders: 3, nDisagreements: 3 });
+    expect(by[1]).toMatchObject({ nItems: 1, nUnanimous: 0, nCoders: 2, nDisagreements: 1 });
+    const overall = roundReliability(grouped, [variable], index, 0.8);
+    expect(overall[0].nItems).toBe(by[0].nItems + by[1].nItems);
+    const rows = reliabilityRows('r1', overall, groupReliability(grouped, [variable], index, 0.8));
+    expect(rows.map((r) => r.group_label)).toEqual(['', 'FB', 'YT']);
   });
 });

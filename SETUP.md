@@ -81,6 +81,8 @@ Sign-in links are only sent back to addresses you approve.
 2. Create a session.
 3. On the **Dataset** tab upload `sample/sample_dataset.csv` (download it from
    your GitHub copy first). Confirm the ID and text columns, then upload.
+   (If your own dataset has a column such as platform, choose it as the
+   group column to draw evenly from each group and get reliability per group.)
 4. On the **Codebook** tab click **Import CSV or JSON** and choose
    `sample/sample_codebook.json`, then **Save**.
 5. On the **Settings** tab set the batch size (20 gives three rounds with the

@@ -22,7 +22,7 @@ export async function settingsTab({ el, session, rerender }) {
     },
   },
     field('Session title', title),
-    field('Batch size per round', batch, 'How many items every coder codes in each round. Each round draws new items at random from the ones not yet used.'),
+    field('Batch size per round', batch, 'How many items every coder codes in each round. Each round draws new items at random from the ones not yet used. If your dataset has groups (for example platforms), this is the number drawn from each group.'),
     field("Reliability target (Krippendorff's α)", target, 'A variable passes a round when its α is at or above this value. The usual standard is .80.'),
     saveBtn);
 

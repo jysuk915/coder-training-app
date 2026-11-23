@@ -375,6 +375,44 @@ describe('visitors who are not signed in', () => {
     await as('trainer', 'delete from sessions where id = $1', [s4.id]);
   });
 
+  it('with groups, a round draws the batch size from every group', async () => {
+    const [s5] = await as('trainer', `select * from create_session('Grouped', 2, 0.8)`);
+    for (const [g, n] of [['FB', 5], ['YT', 5], ['BS', 1]]) {
+      for (let i = 1; i <= n; i++) {
+        await as('trainer', `insert into items (session_id, ext_id, text, group_label) values ($1, $2, 'text', $3)`, [s5.id, `${g} ${i}`, g]);
+      }
+    }
+    const [cb] = await as('trainer',
+      `insert into codebook_versions (session_id, version, content) values ($1, 1, $2) returning id`,
+      [s5.id, JSON.stringify(codebook)]);
+    const counts = async () => Object.fromEntries((await as('trainer', 'select * from session_item_counts($1)', [s5.id]))
+      .map((r) => [r.group_label, [Number(r.total), Number(r.unused)]]));
+    expect(await counts()).toEqual({ BS: [1, 1], FB: [5, 5], YT: [5, 5] });
+    await expect(as('other', 'select * from session_item_counts($1)', [s5.id])).rejects.toThrow(/Only the trainer/);
+
+    const perGroup = async (roundId) => Object.fromEntries((await admin(
+      `select i.group_label as g, count(*)::int as n from round_items ri join items i on i.id = ri.item_id where ri.round_id = $1 group by 1`, [roundId]))
+      .map((r) => [r.g, r.n]));
+    const [r1] = await as('trainer', 'select * from start_round($1, $2)', [s5.id, cb.id]);
+    expect(await perGroup(r1.id)).toEqual({ FB: 2, YT: 2, BS: 1 }); // BS only has 1
+    const positions = await admin('select position from round_items where round_id = $1 order by position', [r1.id]);
+    expect(positions.map((p) => p.position)).toEqual([1, 2, 3, 4, 5]);
+    expect(await counts()).toEqual({ BS: [1, 0], FB: [5, 3], YT: [5, 3] });
+    await as('trainer', 'select * from close_round($1)', [r1.id]);
+    const [r2] = await as('trainer', 'select * from start_round($1, $2)', [s5.id, cb.id]);
+    expect(await perGroup(r2.id)).toEqual({ FB: 2, YT: 2 });
+    const overlap = await admin(`select 1 from round_items a join round_items b on a.item_id = b.item_id and a.round_id <> b.round_id`);
+    expect(overlap).toHaveLength(0);
+
+    // reliability can be stored overall ('') and per group for the same variable
+    await as('trainer', 'select * from close_round($1)', [r2.id]);
+    await as('trainer',
+      `insert into reliability (round_id, variable_key, group_label, n_items, n_coders, alpha, passed)
+       values ($1, 'stance', '', 4, 2, 0.5, false), ($1, 'stance', 'FB', 2, 2, 0.4, false), ($1, 'stance', 'YT', 2, 2, 0.6, false)`, [r2.id]);
+    expect(await as('trainer', 'select * from reliability where round_id = $1', [r2.id])).toHaveLength(3);
+    await as('trainer', 'delete from sessions where id = $1', [s5.id]);
+  });
+
   it('deleting a session removes everything under it', async () => {
     await as('trainer', 'delete from sessions where id = $1', [session.id]);
     const [c] = await admin('select (select count(*) from codes)::int + (select count(*) from items)::int + (select count(*) from rounds)::int as n');

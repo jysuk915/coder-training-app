@@ -1,33 +1,29 @@
 import { supabase, unwrap } from '../../supabase.js';
 import { h, mount, toast, withBusy } from '../../ui.js';
 import { normalizeCodebook, validateCodebook } from '../../lib/codebook.js';
+import { describeGroups } from '../../lib/dataset.js';
 
 const REFRESH_MS = 20000;
 
 export async function roundsTab({ el, session, rerender }) {
   const sid = session.id;
-  const [coders, secrets, rounds, versions, itemsHead] = await Promise.all([
+  const [coders, secrets, rounds, versions, countRows] = await Promise.all([
     supabase.from('coders').select('id, label, joined_at').eq('session_id', sid).order('joined_at'),
     supabase.from('coder_secrets').select('coder_id, rejoin_code, name').eq('session_id', sid),
     supabase.from('rounds').select('*').eq('session_id', sid).order('round_no'),
     supabase.from('codebook_versions').select('id, version, locked, content').eq('session_id', sid).order('version', { ascending: false }),
-    supabase.from('items').select('id', { count: 'exact', head: true }).eq('session_id', sid),
+    supabase.rpc('session_item_counts', { p_session_id: sid }),
   ]);
   const coderRows = unwrap(coders);
   const secretOf = new Map(unwrap(secrets).map((s) => [s.coder_id, s]));
   const roundRows = unwrap(rounds);
   const versionRows = unwrap(versions);
-  if (itemsHead.error) throw new Error(itemsHead.error.message);
-  const totalItems = itemsHead.count ?? 0;
-
-  let usedItems = 0;
-  if (roundRows.length > 0) {
-    const used = await supabase.from('round_items').select('item_id', { count: 'exact', head: true })
-      .in('round_id', roundRows.map((r) => r.id));
-    if (used.error) throw new Error(used.error.message);
-    usedItems = used.count ?? 0;
-  }
-  const unused = totalItems - usedItems;
+  const groups = unwrap(countRows) || [];
+  const grouped = groups.some((g) => g.group_label);
+  const totalItems = groups.reduce((a, g) => a + Number(g.total), 0);
+  const unused = groups.reduce((a, g) => a + Number(g.unused), 0);
+  // what the next round will draw: batch size from every group
+  const draw = groups.map((g) => ({ group_label: g.group_label, n: Math.min(session.batch_size, Number(g.unused)) })).filter((g) => g.n > 0);
   const openRound = roundRows.find((r) => r.status === 'open');
   const versionOf = (id) => versionRows.find((v) => v.id === id);
   const joinLink = `${window.location.origin}${window.location.pathname}#/join/${session.join_code}`;
@@ -134,7 +130,7 @@ export async function roundsTab({ el, session, rerender }) {
       h('option', { value: v.id }, `Version ${v.version}${v.locked ? ' (used before)' : ' (draft, will be locked)'}`)));
     const problemsBox = h('div', {});
     const startBtn = h('button', {}, `Start round ${roundRows.length + 1}`);
-    const batch = Math.min(session.batch_size, unused);
+    const batch = draw.reduce((a, g) => a + g.n, 0);
 
     function check() {
       const v = versionOf(select.value);
@@ -163,7 +159,10 @@ export async function roundsTab({ el, session, rerender }) {
       h('h2', {}, roundRows.length === 0 ? 'Start the first round' : 'Start the next round'),
       h('p', {}, totalItems === 0
         ? 'No items uploaded yet.'
-        : `${unused.toLocaleString()} of ${totalItems.toLocaleString()} items are unused. This round will draw ${batch} of them at random.`),
+        : grouped
+          ? `${unused.toLocaleString()} of ${totalItems.toLocaleString()} items are unused. This round will draw ${batch} at random: ${describeGroups(draw, 'n')}.`
+          : `${unused.toLocaleString()} of ${totalItems.toLocaleString()} items are unused. This round will draw ${batch} of them at random.`),
+      grouped && draw.some((g) => g.n < session.batch_size) && h('p', { class: 'warn' }, `Some groups have fewer than ${session.batch_size} unused items left, so they contribute fewer.`),
       latest && h('div', { class: 'row' }, h('span', {}, 'Codebook'), select),
       problemsBox,
       startBtn);

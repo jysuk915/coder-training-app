@@ -56,7 +56,12 @@ async function render() {
         await page({ app, user, params: match.slice(1), rerender: render });
       } catch (err) {
         console.error(err);
-        mount(app, h('div', { class: 'card error' }, h('h2', {}, 'Something went wrong'), h('p', {}, err.message || String(err))));
+        const message = err.message || String(err);
+        const outdated = /session_item_counts|group_label|schema cache|there is no unique or exclusion constraint/i.test(message);
+        mount(app, h('div', { class: 'card error' },
+          h('h2', {}, outdated ? 'The database needs an update' : 'Something went wrong'),
+          outdated && h('p', {}, 'The app was updated and expects a newer database. Trainer: paste the latest supabase/setup.sql into the Supabase SQL editor and run it (safe to rerun, nothing is deleted), then reload this page.'),
+          h('p', { class: 'muted' }, message)));
       }
       return;
     }

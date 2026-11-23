@@ -158,3 +158,4 @@ button.cell.active { background: var(--accent); border-color: var(--accent); col
 tr.split td { background: #fffaf0; }
 .issue { border-top: 1px solid var(--line); padding: 10px 0; }
 .issue .quote { border-left: 3px solid var(--line); padding-left: 10px; margin: 6px 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+td.below { color: var(--danger); font-weight: 600; }

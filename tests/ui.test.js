@@ -153,6 +153,7 @@ describe('codebook tab', () => {
 describe('dataset tab', () => {
   it('shows the count, rounds estimate, and first items', async () => {
     tables.items = [{ ext_id: 'P001', text: 'Hello' }, { ext_id: 'P002', text: 'World' }];
+    rpcs.session_item_counts = [{ group_label: '', total: 2, unused: 2 }];
     const el = document.createElement('div');
     document.body.append(el);
     await datasetTab({ el, session });
@@ -160,6 +161,17 @@ describe('dataset tab', () => {
     expect(el.textContent).toContain('enough for 1 rounds');
     expect(el.querySelectorAll('tbody tr')).toHaveLength(2);
     expect(el.querySelector('input[type=file]')).not.toBeNull();
+  });
+  it('shows groups and the per-group draw when the dataset has them', async () => {
+    tables.items = [{ ext_id: 'FB 51', text: 'Hello', group_label: 'FB' }];
+    rpcs.session_item_counts = [{ group_label: 'BS', total: 1950, unused: 1950 }, { group_label: 'FB', total: 1950, unused: 1950 }, { group_label: 'YT', total: 1950, unused: 1950 }];
+    const el = document.createElement('div');
+    document.body.append(el);
+    await datasetTab({ el, session: { ...session, batch_size: 50 } });
+    expect(el.textContent).toContain('5,850 items');
+    expect(el.textContent).toContain('Groups: BS 1,950, FB 1,950, YT 1,950');
+    expect(el.textContent).toContain('Each round draws 50 items from every group (150 per round), enough for 39 rounds.');
+    expect([...el.querySelectorAll('thead th')].map((t) => t.textContent)).toEqual(['ID', 'Group', 'Text']);
   });
 });
 
@@ -361,11 +373,12 @@ describe('rounds and coders tab', () => {
     coders: [{ id: 'coderA', label: 'A', joined_at: '2026-11-22T09:00:00Z' }, { id: 'coderB', label: 'B', joined_at: '2026-11-22T09:05:00Z' }],
     coder_secrets: [{ coder_id: 'coderA', rejoin_code: 'A-2222', name: 'Jiyoun' }, { coder_id: 'coderB', rejoin_code: 'B-7KQ2', name: 'Yini' }],
     codebook_versions: [{ id: 'cb1', version: 1, locked: false, content: sample }],
-    items: [{}, {}, {}],
   });
+  const threeItems = () => { rpcs.session_item_counts = [{ group_label: '', total: 3, unused: 3 }]; };
 
   it('offers to start the first round when setup is complete', async () => {
     tables = { ...base(), rounds: [] };
+    threeItems();
     const el = newEl();
     const rerender = vi.fn();
     await roundsTab({ el, session, rerender });
@@ -383,10 +396,24 @@ describe('rounds and coders tab', () => {
   it('blocks starting when the codebook has problems', async () => {
     tables = { ...base(), rounds: [], codebook_versions: [{ id: 'cb1', version: 1, locked: false,
       content: { variables: [{ key: 'v', name: 'Tone', categories: [{ key: 'a', name: 'Only' }] }] } }] };
+    threeItems();
     const el = newEl();
     await roundsTab({ el, session, rerender: () => {} });
     expect(button(el, 'Start round 1').disabled).toBe(true);
     expect(el.textContent).toContain('"Tone" needs at least two categories.');
+  });
+
+  it('with groups, says how many items come from each group', async () => {
+    tables = { ...base(), rounds: [] };
+    rpcs.session_item_counts = [{ group_label: 'BS', total: 1950, unused: 30 }, { group_label: 'FB', total: 1950, unused: 1950 }, { group_label: 'YT', total: 1950, unused: 1950 }];
+    const el = newEl();
+    await roundsTab({ el, session: { ...session, batch_size: 50 }, rerender: () => {} });
+    expect(el.textContent).toContain('This round will draw 130 at random: BS 30, FB 50, YT 50.');
+    expect(el.textContent).toContain('Some groups have fewer than 50 unused items left');
+    const asked = [];
+    window.confirm = (m) => { asked.push(m); return false; };
+    button(el, 'Start round 1').click();
+    expect(asked[0]).toContain('with 130 items');
   });
 
   it('shows who has finished and who has not, with names, while a round is open', async () => {
@@ -417,8 +444,9 @@ describe('closing a round', () => {
       coders: [{ id: 'coderA', label: 'A', joined_at: '2026-11-22T09:00:00Z' }, { id: 'coderB', label: 'B', joined_at: '2026-11-22T09:05:00Z' }],
       coder_secrets: [{ coder_id: 'coderA', rejoin_code: 'A-2222', name: 'Jiyoun' }, { coder_id: 'coderB', rejoin_code: 'B-7KQ2', name: 'Yini' }],
       codebook_versions: [{ id: 'cb1', version: 1, locked: true, content: sample }],
-      items: [{}, {}], rounds: [openRound], round_items: [{}, {}],
+      rounds: [openRound], round_items: [{}, {}],
     };
+    rpcs.session_item_counts = [{ group_label: '', total: 2, unused: 0 }];
     rpcs.round_progress = [
       { coder_id: 'coderA', label: 'A', codes_done: 6, codes_total: 6, submitted_at: '2026-11-22T12:00:00Z' },
       { coder_id: 'coderB', label: 'B', codes_done: 4, codes_total: 6, submitted_at: null },
@@ -562,6 +590,32 @@ describe('review', () => {
     button(card, 'Post').click();
     await settle();
     expect(opsOf('comments', 'insert')[0][1]).toMatchObject({ author_coder_id: 'coderB', body: 'I agree' });
+    app.remove();
+  });
+
+  it('with groups: alpha overall and per group, stored for both, cards filter by group', async () => {
+    reviewFixture();
+    tables.round_items.forEach((ri, i) => { ri.items.group_label = i < 2 ? 'FB' : 'YT'; }); // FB: i1, i2; YT: i3, i4
+    const app = newEl();
+    await reviewPage({ app, user: trainer, params: ['r1'] });
+    const [saved] = opsOf('reliability', 'upsert');
+    expect(saved[1].map((r) => [r.group_label, r.n_items])).toEqual([['', 4], ['FB', 2], ['YT', 2]]);
+    expect(saved[2]).toEqual({ onConflict: 'round_id,variable_key,group_label' });
+    const fb = krippendorffAlphaNominal([['1', '1', '1'], ['1', '1', '0']]).alpha;
+    const yt = krippendorffAlphaNominal([['0', '1', '1'], ['0', '0', '0']]).alpha;
+    expect(saved[1][1].alpha).toBeCloseTo(fb, 12);
+    expect(saved[1][2].alpha).toBeCloseTo(yt, 12);
+    const fmt = (a) => a.toFixed(2).replace(/^(-?)0\./, '$1.');
+    const byGroup = [...app.querySelectorAll('table.summary')][1];
+    expect([...byGroup.querySelectorAll('thead th')].map((t) => t.textContent)).toEqual(['Variable', 'All items', 'FB', 'YT']);
+    expect([...byGroup.querySelectorAll('tbody td')].map((t) => t.textContent)).toEqual(['Relevance', fmt(expectedAlpha), fmt(fb), fmt(yt)]);
+
+    button(app, 'Review').click();
+    expect(app.querySelectorAll('.dcard')).toHaveLength(2);
+    button(app, 'YT').click();
+    const cards = [...app.querySelectorAll('.dcard')];
+    expect(cards).toHaveLength(1);
+    expect(cards[0].textContent).toContain('ID FB 53');
     app.remove();
   });
 

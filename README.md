@@ -48,6 +48,16 @@ Every variable uses the same four parts:
 Type the codebook into the editor, or import it. JSON carries everything.
 CSV (one row per category) carries everything except worked examples.
 
+## Groups (optional)
+
+A dataset can carry a group column, for example platform. When it does:
+
+- each round draws the batch size from every group (50 means 50 per platform),
+- the review reports alpha for all items pooled and for each group,
+- disagreement cards can be filtered by group.
+
+Leave the group column set to "None" on upload and none of this appears.
+
 ## Reliability statistics
 
 Computed per variable when the trainer closes a round (`src/lib/alpha.js`):

@@ -78,9 +78,9 @@ describe('codebook', () => {
 });
 
 describe('dataset', () => {
-  it('guesses the id and text columns', () => {
-    expect(guessColumns(['post_id', 'platform', 'text'])).toEqual({ idCol: 'post_id', textCol: 'text' });
-    expect(guessColumns(['ID', 'Body'])).toEqual({ idCol: 'ID', textCol: 'Body' });
+  it('guesses the id, text, and group columns', () => {
+    expect(guessColumns(['post_id', 'platform', 'text'])).toEqual({ idCol: 'post_id', textCol: 'text', groupCol: 'platform' });
+    expect(guessColumns(['ID', 'Body'])).toEqual({ idCol: 'ID', textCol: 'Body', groupCol: null });
   });
 
   it('skips rows with a missing or repeated id, or no text', () => {
@@ -90,11 +90,20 @@ describe('dataset', () => {
     expect(skipped).toEqual({ missingId: 1, missingText: 1, duplicateId: 1 });
   });
 
+  it('attaches a group when a group column is chosen', () => {
+    const { items, noGroup } = prepareItems(
+      [{ a: '1', b: 'x', g: ' FB ' }, { a: '2', b: 'y', g: 'YT' }, { a: '3', b: 'z', g: '' }], 'a', 'b', 'g');
+    expect(items).toEqual([
+      { ext_id: '1', text: 'x', group_label: 'FB' }, { ext_id: '2', text: 'y', group_label: 'YT' }, { ext_id: '3', text: 'z', group_label: null }]);
+    expect(noGroup).toBe(1);
+  });
+
   it('the sample dataset is clean: 60 unique items', () => {
     const { data, meta } = parse(read('../sample/sample_dataset.csv'));
     const cols = guessColumns(meta.fields);
     const { items, skipped } = prepareItems(data, cols.idCol, cols.textCol);
     expect(items.length).toBe(60);
     expect(skipped).toEqual({ missingId: 0, missingText: 0, duplicateId: 0 });
+    expect(cols.groupCol).toBeNull();
   });
 });
