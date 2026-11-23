@@ -34,7 +34,7 @@ export function codebookPanel(codebook, versionLabel) {
             v.categories.map((c) =>
               h('div', { class: 'def' },
                 h('strong', {}, c.name),
-                c.definition && h('p', {}, c.definition),
+                c.definition && richText(c.definition),
                 (c.examples || []).length > 0 && h('ul', { class: 'examples' }, c.examples.map((e) => h('li', {}, e))))),
             v.instructions && h('div', { class: 'instructions' }, h('strong', {}, 'Instructions'), richText(v.instructions))));
   }
